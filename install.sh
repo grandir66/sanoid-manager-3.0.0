@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Sanoid Manager v1.1.0 - Script di Installazione
+# Sanoid Manager v3.0.3 - Script di Installazione
 # Gestione centralizzata Sanoid/Syncoid per Proxmox VE
 # Con autenticazione integrata Proxmox
 #
@@ -8,7 +8,7 @@
 set -e
 
 # ============== CONFIGURAZIONE ==============
-VERSION="3.0.0"
+VERSION="3.0.3"
 GITHUB_REPO="grandir66/sanoid-manager-3.0.0"
 INSTALL_DIR="/opt/sanoid-manager"
 DATA_DIR="/var/lib/sanoid-manager"
