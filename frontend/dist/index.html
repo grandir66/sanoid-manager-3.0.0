@@ -1560,8 +1560,8 @@
                         <tbody>
                             <tr v-for="node in nodes" :key="node.id">
                                 <td><strong>{{ node.name }}</strong></td>
-                                <td><code>{{ node.host }}</code></td>
-                                <td>{{ node.port || 22 }}</td>
+                                <td><code>{{ node.hostname }}</code></td>
+                                <td>{{ node.ssh_port || 22 }}</td>
                                 <td>
                                     <span v-if="sshTestResults[node.id] === undefined" class="status-badge warning">Non testato</span>
                                     <span v-else-if="sshTestResults[node.id]?.success" class="status-badge success">✅ Connesso</span>
@@ -1622,7 +1622,7 @@
                         <div style="max-height: 200px; overflow-y: auto; background: var(--bg-tertiary); padding: 12px; border-radius: 8px;">
                             <label v-for="node in nodes" :key="node.id" style="display: block; margin-bottom: 8px;">
                                 <input type="checkbox" v-model="selectedNodesForDistribute" :value="node.id">
-                                {{ node.name }} ({{ node.host }})
+                                {{ node.name }} ({{ node.hostname }})
                             </label>
                         </div>
                     </div>

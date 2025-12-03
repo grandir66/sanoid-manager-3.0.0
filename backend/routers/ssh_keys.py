@@ -111,9 +111,9 @@ async def distribute_key(request: DistributeKeyRequest, db: Session = Depends(ge
         {
             "id": node.id,
             "name": node.name,
-            "host": node.host,
-            "port": node.port or 22,
-            "username": node.username or "root"
+            "host": node.hostname,
+            "port": node.ssh_port or 22,
+            "username": node.ssh_user or "root"
         }
         for node in nodes
     ]
@@ -153,9 +153,9 @@ async def test_connections(request: TestConnectionRequest, db: Session = Depends
         {
             "id": node.id,
             "name": node.name,
-            "host": node.host,
-            "port": node.port or 22,
-            "username": node.username or "root"
+            "host": node.hostname,
+            "port": node.ssh_port or 22,
+            "username": node.ssh_user or "root"
         }
         for node in nodes
     ]
@@ -195,9 +195,9 @@ async def distribute_key_to_single_node(
         raise HTTPException(status_code=404, detail="Nodo non trovato")
     
     result = await ssh_key_service.distribute_key_to_host(
-        hostname=node.host,
-        port=node.port or 22,
-        username=node.username or "root",
+        hostname=node.hostname,
+        port=node.ssh_port or 22,
+        username=node.ssh_user or "root",
         password=password
     )
     
@@ -218,15 +218,15 @@ async def test_single_connection(node_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Nodo non trovato")
     
     success, message = await ssh_key_service.test_key_auth(
-        hostname=node.host,
-        port=node.port or 22,
-        username=node.username or "root"
+        hostname=node.hostname,
+        port=node.ssh_port or 22,
+        username=node.ssh_user or "root"
     )
     
     return {
         "node_id": node.id,
         "node_name": node.name,
-        "host": node.host,
+        "host": node.hostname,
         "success": success,
         "message": message
     }
@@ -264,9 +264,9 @@ async def force_sync_keys(request: DistributeKeyRequest, db: Session = Depends(g
         {
             "id": node.id,
             "name": node.name,
-            "host": node.host,
-            "port": node.port or 22,
-            "username": node.username or "root"
+            "host": node.hostname,
+            "port": node.ssh_port or 22,
+            "username": node.ssh_user or "root"
         }
         for node in nodes
     ]
