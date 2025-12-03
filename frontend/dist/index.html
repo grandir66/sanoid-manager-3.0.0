@@ -1264,7 +1264,7 @@
                     </div>
                     
                     <!-- Log Detail Modal -->
-                    <div class="modal-overlay" v-if="selectedLog" @click.self="selectedLog = null">
+                    <div class="modal-overlay" v-if="isAuthenticated && selectedLog" @click.self="selectedLog = null">
                         <div class="modal" style="max-width: 800px;">
                             <div class="modal-header">
                                 <h3 class="modal-title">Dettagli Log #{{ selectedLog.id }}</h3>
@@ -1391,7 +1391,7 @@
         </template>
         
         <!-- Modals... (keeping existing but simplified) -->
-        <div class="modal-overlay" v-if="showNodeModal" @click.self="showNodeModal = false">
+        <div class="modal-overlay" v-if="isAuthenticated && showNodeModal" @click.self="showNodeModal = false">
             <div class="modal">
                 <div class="modal-header">
                     <h3 class="modal-title">Aggiungi Nodo</h3>
@@ -1428,7 +1428,7 @@
             </div>
         </div>
         
-        <div class="modal-overlay" v-if="showSyncJobModal" @click.self="showSyncJobModal = false">
+        <div class="modal-overlay" v-if="isAuthenticated && showSyncJobModal" @click.self="showSyncJobModal = false">
             <div class="modal" style="max-width: 700px;">
                 <div class="modal-header">
                     <h3 class="modal-title">Nuovo Job Replica</h3>
@@ -1570,7 +1570,7 @@
             </div>
         </div>
         
-        <div class="modal-overlay" v-if="showUserModal" @click.self="showUserModal = false">
+        <div class="modal-overlay" v-if="isAuthenticated && showUserModal" @click.self="showUserModal = false">
             <div class="modal">
                 <div class="modal-header">
                     <h3 class="modal-title">{{ editingUser ? 'Modifica' : 'Nuovo' }} Utente</h3>
