@@ -13,7 +13,7 @@ import os
 import logging
 
 from database import engine, Base, get_db, init_default_config, SessionLocal
-from routers import nodes, snapshots, sync_jobs, vms, logs, settings, auth
+from routers import nodes, snapshots, sync_jobs, vms, logs, settings, auth, ssh_keys
 from services.scheduler import SchedulerService
 
 # Configurazione logging
@@ -55,7 +55,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Sanoid Manager",
     description="Gestione centralizzata snapshot ZFS e replica per Proxmox VE",
-    version="3.0.4",
+    version="3.0.5",
     lifespan=lifespan
 )
 
@@ -94,6 +94,7 @@ app.include_router(sync_jobs.router, prefix="/api/sync-jobs", tags=["Sync Jobs"]
 app.include_router(vms.router, prefix="/api/vms", tags=["VMs"])
 app.include_router(logs.router, prefix="/api/logs", tags=["Logs"])
 app.include_router(settings.router, prefix="/api/settings", tags=["Settings"])
+app.include_router(ssh_keys.router, prefix="/api", tags=["SSH Keys"])
 
 
 # Health check (non richiede autenticazione)
@@ -101,7 +102,7 @@ app.include_router(settings.router, prefix="/api/settings", tags=["Settings"])
 async def health_check():
     return {
         "status": "healthy",
-        "version": "3.0.4",
+        "version": "3.0.5",
         "auth_enabled": True
     }
 

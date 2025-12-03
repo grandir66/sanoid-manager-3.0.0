@@ -9,6 +9,7 @@ from . import sync_jobs
 from . import vms
 from . import logs
 from . import settings
+from . import ssh_keys
 
 __all__ = [
     "auth",
@@ -17,5 +18,6 @@ __all__ = [
     "sync_jobs",
     "vms",
     "logs",
-    "settings"
+    "settings",
+    "ssh_keys"
 ]

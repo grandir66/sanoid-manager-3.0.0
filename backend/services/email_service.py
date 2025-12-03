@@ -223,3 +223,4 @@ class EmailService:
 # Istanza singleton
 email_service = EmailService()
 
+

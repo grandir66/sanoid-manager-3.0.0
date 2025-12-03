@@ -707,6 +707,12 @@
                             </svg>
                             Utenti
                 </div>
+                <div class="nav-item" :class="{ active: currentPage === 'ssh-keys' }" @click="currentPage = 'ssh-keys'">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>
+                    </svg>
+                    SSH Keys
+                </div>
                 <div class="nav-item" :class="{ active: currentPage === 'settings' }" @click="currentPage = 'settings'">
                     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
@@ -1467,8 +1473,180 @@
                         </div>
                     </div>
             </div>
+            
+            <!-- SSH Keys Management Page -->
+            <div v-if="currentPage === 'ssh-keys'">
+                <div class="page-header">
+                    <h1 class="page-title">🔑 Gestione Chiavi SSH</h1>
+                    <p class="page-subtitle">Configura e distribuisci le chiavi SSH per la replica tra nodi</p>
+                </div>
+                
+                <!-- Stato Chiave Locale -->
+                <div class="card">
+                    <h3 class="card-title" style="margin-bottom: 20px;">🔐 Chiave SSH Locale</h3>
+                    
+                    <div v-if="sshKeyInfo.exists" style="margin-bottom: 20px;">
+                        <div class="status-badge" :class="sshKeyInfo.exists ? 'success' : 'warning'" style="display: inline-block; margin-bottom: 16px;">
+                            {{ sshKeyInfo.exists ? '✅ Chiave presente' : '⚠️ Chiave non trovata' }}
+                        </div>
+                        
+                        <div class="grid-2">
+                            <div class="form-group">
+                                <label class="form-label">Tipo Chiave</label>
+                                <input type="text" class="form-input" :value="sshKeyInfo.key_type" disabled>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Fingerprint</label>
+                                <input type="text" class="form-input" :value="sshKeyInfo.fingerprint" disabled style="font-family: 'JetBrains Mono', monospace; font-size: 12px;">
+                            </div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label">Chiave Pubblica</label>
+                            <textarea class="form-input" :value="sshKeyInfo.public_key" disabled rows="3" style="font-family: 'JetBrains Mono', monospace; font-size: 11px;"></textarea>
+                            <button class="btn btn-secondary" style="margin-top: 8px;" @click="copyPublicKey">📋 Copia Chiave</button>
+                        </div>
+                    </div>
+                    
+                    <div v-else style="text-align: center; padding: 30px; background: var(--bg-tertiary); border-radius: 12px;">
+                        <p style="color: var(--accent-warning); margin-bottom: 16px;">⚠️ Nessuna chiave SSH trovata</p>
+                        <button class="btn btn-primary" @click="generateSSHKey" :disabled="loading">
+                            🔧 Genera Nuova Chiave
+                        </button>
+                    </div>
+                    
+                    <div style="margin-top: 20px; border-top: 1px solid var(--border-color); padding-top: 20px;" v-if="sshKeyInfo.exists">
+                        <h4 style="color: var(--accent-warning); margin-bottom: 12px;">⚠️ Rigenera Chiave</h4>
+                        <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 12px;">
+                            Attenzione: rigenerare la chiave richiederà di ridistribuirla a tutti i nodi!
+                        </p>
+                        <button class="btn btn-danger" @click="regenerateSSHKey" :disabled="loading">
+                            🔄 Rigenera Chiave
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Stato Nodi -->
+                <div class="card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <h3 class="card-title">🖥️ Stato Connessione Nodi</h3>
+                        <div>
+                            <button class="btn btn-secondary" @click="testAllSSHConnections" :disabled="loading" style="margin-right: 8px;">
+                                🧪 Testa Tutti
+                            </button>
+                            <button class="btn btn-primary" @click="showDistributeModal = true" :disabled="loading || !sshKeyInfo.exists">
+                                🚀 Distribuisci Chiave
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div v-if="nodes.length === 0" style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                        <p>Nessun nodo configurato</p>
+                        <button class="btn btn-primary" style="margin-top: 16px;" @click="currentPage = 'nodes'">
+                            ➕ Aggiungi Nodo
+                        </button>
+                    </div>
+                    
+                    <table class="table" v-else>
+                        <thead>
+                            <tr>
+                                <th>Nodo</th>
+                                <th>Host</th>
+                                <th>Porta</th>
+                                <th>Stato SSH</th>
+                                <th>Azioni</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="node in nodes" :key="node.id">
+                                <td><strong>{{ node.name }}</strong></td>
+                                <td><code>{{ node.host }}</code></td>
+                                <td>{{ node.port || 22 }}</td>
+                                <td>
+                                    <span v-if="sshTestResults[node.id] === undefined" class="status-badge warning">Non testato</span>
+                                    <span v-else-if="sshTestResults[node.id]?.success" class="status-badge success">✅ Connesso</span>
+                                    <span v-else class="status-badge danger" :title="sshTestResults[node.id]?.message">❌ Errore</span>
+                                </td>
+                                <td>
+                                    <button class="btn btn-secondary btn-sm" @click="testSingleSSH(node.id)" :disabled="loading" title="Test connessione">
+                                        🧪
+                                    </button>
+                                    <button class="btn btn-primary btn-sm" @click="distributeSingleKey(node.id)" :disabled="loading || !sshKeyInfo.exists" title="Distribuisci chiave">
+                                        🔑
+                                    </button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- Guida -->
+                <div class="card">
+                    <h3 class="card-title" style="margin-bottom: 16px;">📖 Guida Rapida</h3>
+                    <div style="color: var(--text-secondary); font-size: 14px; line-height: 1.8;">
+                        <p><strong>1. Genera/Verifica Chiave:</strong> Assicurati che esista una chiave SSH locale.</p>
+                        <p><strong>2. Aggiungi Nodi:</strong> Configura i nodi Proxmox nella sezione "Nodi".</p>
+                        <p><strong>3. Distribuisci Chiave:</strong> Usa il pulsante "Distribuisci" per copiare la chiave pubblica sui nodi.</p>
+                        <p><strong>4. Testa Connessioni:</strong> Verifica che la connessione SSH funzioni senza password.</p>
+                        <p style="margin-top: 16px; padding: 12px; background: var(--bg-tertiary); border-radius: 8px;">
+                            💡 <strong>Tip:</strong> Se la distribuzione automatica fallisce, copia manualmente la chiave pubblica su ogni nodo:
+                            <br><code style="color: var(--accent-primary);">ssh-copy-id -i /root/.ssh/id_rsa.pub root@NODO_IP</code>
+                        </p>
+                    </div>
+                </div>
+            </div>
         </main>
         </template>
+        
+        <!-- Modal Distribuzione Chiave -->
+        <div class="modal-overlay" v-if="showDistributeModal" @click.self="showDistributeModal = false">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3 class="modal-title">🚀 Distribuisci Chiave SSH</h3>
+                    <button class="btn btn-icon" @click="showDistributeModal = false">✕</button>
+                </div>
+                
+                <div class="modal-body">
+                    <p style="margin-bottom: 16px; color: var(--text-secondary);">
+                        Se è la prima volta che distribuisci la chiave, potrebbe essere necessaria la password root dei nodi.
+                    </p>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Password Root (opzionale)</label>
+                        <input type="password" class="form-input" v-model="distributePassword" placeholder="Lascia vuoto se la chiave è già installata">
+                        <small style="color: var(--text-secondary);">Usata solo per la prima distribuzione se non c'è già accesso SSH</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Nodi da aggiornare</label>
+                        <div style="max-height: 200px; overflow-y: auto; background: var(--bg-tertiary); padding: 12px; border-radius: 8px;">
+                            <label v-for="node in nodes" :key="node.id" style="display: block; margin-bottom: 8px;">
+                                <input type="checkbox" v-model="selectedNodesForDistribute" :value="node.id">
+                                {{ node.name }} ({{ node.host }})
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div v-if="distributeResults.length > 0" style="margin-top: 16px;">
+                        <h4 style="margin-bottom: 8px;">Risultati:</h4>
+                        <div v-for="r in distributeResults" :key="r.host" style="padding: 8px; margin-bottom: 4px; border-radius: 6px;" 
+                             :style="{ background: r.success ? 'rgba(0,255,157,0.1)' : 'rgba(255,71,87,0.1)' }">
+                            <strong>{{ r.host }}:</strong> 
+                            <span :style="{ color: r.success ? 'var(--accent-primary)' : 'var(--accent-danger)' }">
+                                {{ r.message }}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @click="showDistributeModal = false">Chiudi</button>
+                    <button class="btn btn-primary" @click="distributeKeyToSelected" :disabled="loading || selectedNodesForDistribute.length === 0">
+                        🚀 Distribuisci
+                    </button>
+                </div>
+            </div>
+        </div>
         
         <!-- Modals... (keeping existing but simplified) -->
         <div class="modal-overlay" v-if="isAuthenticated && showNodeModal" @click.self="showNodeModal = false">
@@ -1853,6 +2031,14 @@
                 const editingUser = ref(null);
                 const selectedLog = ref(null);
                 
+                // SSH Keys
+                const sshKeyInfo = ref({ exists: false, public_key: '', key_type: '', fingerprint: '', comment: '' });
+                const sshTestResults = ref({});
+                const showDistributeModal = ref(false);
+                const distributePassword = ref('');
+                const selectedNodesForDistribute = ref([]);
+                const distributeResults = ref([]);
+                
                 // Snapshot Modal
                 const showSnapshotModal = ref(false);
                 const snapshotTab = ref('source');
@@ -2029,7 +2215,7 @@
                 
                 // Data loading
                 const loadAllData = async () => {
-                    await Promise.all([loadNodes(), loadSyncJobs(), loadLogs(), loadUsers()]);
+                    await Promise.all([loadNodes(), loadSyncJobs(), loadLogs(), loadUsers(), loadSSHKeyInfo()]);
                 };
                 
                 const loadNodes = async () => {
@@ -2521,6 +2707,139 @@
                     loading.value = false;
                 };
                 
+                // SSH Keys Management
+                const loadSSHKeyInfo = async () => {
+                    try {
+                        const res = await axios.get(`${API}/ssh-keys/info`);
+                        sshKeyInfo.value = res.data;
+                    } catch (e) {
+                        console.error('Errore caricamento info chiave SSH:', e);
+                    }
+                };
+                
+                const generateSSHKey = async () => {
+                    loading.value = true;
+                    try {
+                        const res = await axios.post(`${API}/ssh-keys/generate`, {
+                            key_type: 'rsa',
+                            bits: 4096,
+                            comment: 'sanoid-manager',
+                            overwrite: false
+                        });
+                        if (res.data.key_info) {
+                            sshKeyInfo.value = res.data.key_info;
+                        }
+                        showToast('Chiave SSH generata con successo', 'success');
+                    } catch (e) {
+                        showToast(e.response?.data?.detail || 'Errore generazione chiave', 'error');
+                    }
+                    loading.value = false;
+                };
+                
+                const regenerateSSHKey = async () => {
+                    if (!confirm('Sei sicuro? Dovrai ridistribuire la chiave a tutti i nodi!')) return;
+                    loading.value = true;
+                    try {
+                        const res = await axios.post(`${API}/ssh-keys/generate`, {
+                            key_type: 'rsa',
+                            bits: 4096,
+                            comment: 'sanoid-manager',
+                            overwrite: true
+                        });
+                        if (res.data.key_info) {
+                            sshKeyInfo.value = res.data.key_info;
+                        }
+                        sshTestResults.value = {}; // Reset test results
+                        showToast('Chiave SSH rigenerata! Ricorda di ridistribuirla ai nodi.', 'success');
+                    } catch (e) {
+                        showToast(e.response?.data?.detail || 'Errore rigenerazione chiave', 'error');
+                    }
+                    loading.value = false;
+                };
+                
+                const copyPublicKey = () => {
+                    if (sshKeyInfo.value.public_key) {
+                        navigator.clipboard.writeText(sshKeyInfo.value.public_key);
+                        showToast('Chiave copiata negli appunti');
+                    }
+                };
+                
+                const testAllSSHConnections = async () => {
+                    loading.value = true;
+                    try {
+                        const res = await axios.post(`${API}/ssh-keys/test`, {});
+                        for (const r of res.data) {
+                            sshTestResults.value[r.node_id] = r;
+                        }
+                        const success = res.data.filter(r => r.success).length;
+                        const total = res.data.length;
+                        showToast(`Test completato: ${success}/${total} nodi OK`);
+                    } catch (e) {
+                        showToast(e.response?.data?.detail || 'Errore test connessioni', 'error');
+                    }
+                    loading.value = false;
+                };
+                
+                const testSingleSSH = async (nodeId) => {
+                    loading.value = true;
+                    try {
+                        const res = await axios.post(`${API}/ssh-keys/test-single/${nodeId}`);
+                        sshTestResults.value[nodeId] = res.data;
+                        if (res.data.success) {
+                            showToast(`Connessione OK a ${res.data.host}`);
+                        } else {
+                            showToast(`Errore connessione: ${res.data.message}`, 'error');
+                        }
+                    } catch (e) {
+                        sshTestResults.value[nodeId] = { success: false, message: e.response?.data?.detail || 'Errore' };
+                        showToast(e.response?.data?.detail || 'Errore test', 'error');
+                    }
+                    loading.value = false;
+                };
+                
+                const distributeSingleKey = async (nodeId) => {
+                    loading.value = true;
+                    try {
+                        const res = await axios.post(`${API}/ssh-keys/distribute-single/${nodeId}`);
+                        if (res.data.success) {
+                            showToast(res.data.already_present ? 'Chiave già presente' : 'Chiave distribuita con successo');
+                            // Aggiorna test result
+                            sshTestResults.value[nodeId] = { success: true, message: 'Chiave installata' };
+                        } else {
+                            showToast(`Errore: ${res.data.message}`, 'error');
+                        }
+                    } catch (e) {
+                        showToast(e.response?.data?.detail || 'Errore distribuzione', 'error');
+                    }
+                    loading.value = false;
+                };
+                
+                const distributeKeyToSelected = async () => {
+                    loading.value = true;
+                    distributeResults.value = [];
+                    try {
+                        const res = await axios.post(`${API}/ssh-keys/distribute`, {
+                            node_ids: selectedNodesForDistribute.value,
+                            password: distributePassword.value || null
+                        });
+                        distributeResults.value = res.data;
+                        
+                        // Aggiorna test results
+                        for (const r of res.data) {
+                            const node = nodes.value.find(n => n.host === r.host);
+                            if (node) {
+                                sshTestResults.value[node.id] = { success: r.success, message: r.message };
+                            }
+                        }
+                        
+                        const success = res.data.filter(r => r.success).length;
+                        showToast(`Distribuzione completata: ${success}/${res.data.length} OK`);
+                    } catch (e) {
+                        showToast(e.response?.data?.detail || 'Errore distribuzione', 'error');
+                    }
+                    loading.value = false;
+                };
+                
                 // Init
                 onMounted(async () => {
                     if (checkAuth()) {
@@ -2541,6 +2860,8 @@
                     sourceVMs, vmReplicaWizard, vmGroups, singleJobs,
                     settings, authSettings, notifSettings,
                     showNodeModal, showSyncJobModal, editingSyncJobId, showUserModal, editingUser,
+                    // SSH Keys
+                    sshKeyInfo, sshTestResults, showDistributeModal, distributePassword, selectedNodesForDistribute, distributeResults,
                     // Snapshot Modal
                     showSnapshotModal, snapshotTab, snapshotModalData,
                     newNode, newSyncJob, newUser,
@@ -2559,7 +2880,10 @@
                     createSyncJob, runSyncJob, toggleSyncJob, deleteSyncJob, editSyncJob, registerJobVM,
                     getVmDatasets,
                     editUser, saveUser, deleteUser,
-                    saveSettings, saveAuthSettings, saveNotifSettings, testEmailNotification
+                    saveSettings, saveAuthSettings, saveNotifSettings, testEmailNotification,
+                    // SSH Keys functions
+                    loadSSHKeyInfo, generateSSHKey, regenerateSSHKey, copyPublicKey,
+                    testAllSSHConnections, testSingleSSH, distributeSingleKey, distributeKeyToSelected
                 };
             }
         }).mount('#app');
