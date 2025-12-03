@@ -1112,7 +1112,7 @@
                         <div v-if="vmReplicaWizard.destPool" style="background: var(--bg-tertiary); padding: 16px; border-radius: 8px; margin-top: 20px;">
                             <h5 style="margin-bottom: 8px;">📋 Anteprima Dataset Destinazione:</h5>
                             <div v-for="disk in vmReplicaWizard.disks.filter(d => d.selected && d.dataset)" :key="disk.disk_name" style="font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; margin: 4px 0;">
-                                {{ disk.disk_name }}: <span style="color: var(--accent-primary);">{{ vmReplicaWizard.destPool }}/{{ vmReplicaWizard.destSubfolder }}/{{ disk.dataset.split('/').pop() }}</span>
+                                {{ disk.disk_name }}: <span style="color: var(--accent-primary);">{{ vmReplicaWizard.destPool }}{{ vmReplicaWizard.destSubfolder ? '/' + vmReplicaWizard.destSubfolder : '' }}/{{ disk.dataset.split('/').pop() }}</span>
                             </div>
                         </div>
                         
