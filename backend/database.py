@@ -159,6 +159,8 @@ class NotificationConfig(Base):
     smtp_user = Column(String(255), nullable=True)
     smtp_password = Column(String(255), nullable=True)  # Encrypted
     smtp_from = Column(String(255), nullable=True)
+    smtp_to = Column(String(500), nullable=True)  # Destinatari (separati da virgola)
+    smtp_subject_prefix = Column(String(100), default="[Sanoid Manager]")  # Prefisso soggetto
     smtp_tls = Column(Boolean, default=True)
     
     # Webhook

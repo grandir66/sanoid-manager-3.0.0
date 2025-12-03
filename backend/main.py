@@ -55,7 +55,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Sanoid Manager",
     description="Gestione centralizzata snapshot ZFS e replica per Proxmox VE",
-    version="3.0.2",
+    version="3.0.3",
     lifespan=lifespan
 )
 
@@ -101,7 +101,7 @@ app.include_router(settings.router, prefix="/api/settings", tags=["Settings"])
 async def health_check():
     return {
         "status": "healthy",
-        "version": "3.0.2",
+        "version": "3.0.3",
         "auth_enabled": True
     }
 

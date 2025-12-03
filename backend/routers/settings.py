@@ -49,6 +49,8 @@ class NotificationConfigUpdate(BaseModel):
     smtp_user: Optional[str] = None
     smtp_password: Optional[str] = None
     smtp_from: Optional[str] = None
+    smtp_to: Optional[str] = None  # Destinatari separati da virgola
+    smtp_subject_prefix: Optional[str] = None  # Prefisso soggetto
     smtp_tls: Optional[bool] = None
     
     # Webhook
@@ -74,6 +76,8 @@ class NotificationConfigResponse(BaseModel):
     smtp_port: int
     smtp_user: Optional[str]
     smtp_from: Optional[str]
+    smtp_to: Optional[str]
+    smtp_subject_prefix: Optional[str]
     smtp_tls: bool
     
     webhook_enabled: bool
@@ -349,20 +353,84 @@ async def test_notification(
     if channel == "email":
         if not config.smtp_enabled:
             raise HTTPException(status_code=400, detail="Email non abilitata")
-        # TODO: Implementare invio email di test
-        return {"message": "Email di test inviata (simulata)"}
+        if not config.smtp_host:
+            raise HTTPException(status_code=400, detail="Server SMTP non configurato")
+        if not config.smtp_to:
+            raise HTTPException(status_code=400, detail="Destinatario email non configurato")
+        
+        from services.email_service import email_service
+        
+        # Configura il servizio email
+        email_service.configure(
+            host=config.smtp_host,
+            port=config.smtp_port or 587,
+            user=config.smtp_user,
+            password=config.smtp_password,
+            from_addr=config.smtp_from,
+            to_addrs=config.smtp_to,
+            subject_prefix=config.smtp_subject_prefix or "[Sanoid Manager]",
+            use_tls=config.smtp_tls
+        )
+        
+        # Invia email di test
+        success, message = email_service.send_test_email()
+        
+        if success:
+            return {"success": True, "message": f"Email di test inviata a {config.smtp_to}"}
+        else:
+            raise HTTPException(status_code=500, detail=f"Errore invio email: {message}")
     
     elif channel == "webhook":
         if not config.webhook_enabled:
             raise HTTPException(status_code=400, detail="Webhook non abilitato")
-        # TODO: Implementare invio webhook di test
-        return {"message": "Webhook di test inviato (simulato)"}
+        if not config.webhook_url:
+            raise HTTPException(status_code=400, detail="URL Webhook non configurato")
+        
+        import httpx
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    config.webhook_url,
+                    json={
+                        "type": "test",
+                        "message": "Test notifica da Sanoid Manager",
+                        "timestamp": datetime.utcnow().isoformat()
+                    },
+                    headers={"X-Webhook-Secret": config.webhook_secret} if config.webhook_secret else {},
+                    timeout=10
+                )
+                if response.status_code < 300:
+                    return {"success": True, "message": f"Webhook inviato con successo (status: {response.status_code})"}
+                else:
+                    raise HTTPException(status_code=500, detail=f"Webhook fallito: HTTP {response.status_code}")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Errore webhook: {str(e)}")
     
     elif channel == "telegram":
         if not config.telegram_enabled:
             raise HTTPException(status_code=400, detail="Telegram non abilitato")
-        # TODO: Implementare invio telegram di test
-        return {"message": "Messaggio Telegram di test inviato (simulato)"}
+        if not config.telegram_bot_token or not config.telegram_chat_id:
+            raise HTTPException(status_code=400, detail="Token o Chat ID Telegram non configurati")
+        
+        import httpx
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"https://api.telegram.org/bot{config.telegram_bot_token}/sendMessage",
+                    json={
+                        "chat_id": config.telegram_chat_id,
+                        "text": "🧪 *Test Sanoid Manager*\n\nSe ricevi questo messaggio, Telegram è configurato correttamente!",
+                        "parse_mode": "Markdown"
+                    },
+                    timeout=10
+                )
+                result = response.json()
+                if result.get("ok"):
+                    return {"success": True, "message": "Messaggio Telegram inviato con successo"}
+                else:
+                    raise HTTPException(status_code=500, detail=f"Errore Telegram: {result.get('description', 'Unknown')}")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Errore Telegram: {str(e)}")
     
     raise HTTPException(status_code=400, detail="Canale non valido")
 

@@ -1312,7 +1312,7 @@
                     <div class="tabs">
                         <div class="tab" :class="{active: settingsTab === 'general'}" @click="settingsTab = 'general'">Generale</div>
                         <div class="tab" :class="{active: settingsTab === 'auth'}" @click="settingsTab = 'auth'" v-if="currentUser?.role === 'admin'">Autenticazione</div>
-                        <div class="tab" :class="{active: settingsTab === 'notifications'}" @click="settingsTab = 'notifications'" v-if="currentUser?.role === 'admin'">Notifiche</div>
+                        <div class="tab" :class="{active: settingsTab === 'notifications'}" @click="settingsTab = 'notifications'; loadNotifSettings()" v-if="currentUser?.role === 'admin'">Notifiche</div>
                     </div>
                     
                     <div class="card" v-if="settingsTab === 'general'">
@@ -1364,29 +1364,83 @@
                     </div>
                     
                     <div class="card" v-if="settingsTab === 'notifications' && isAdmin">
-                        <h3 class="card-title" style="margin-bottom: 20px;">🔔 Notifiche</h3>
+                        <h3 class="card-title" style="margin-bottom: 20px;">🔔 Notifiche Email</h3>
+                        
                         <div class="form-group">
-                            <label class="form-label"><input type="checkbox" v-model="notifSettings.smtp_enabled"> Abilita Email</label>
+                            <label class="form-label"><input type="checkbox" v-model="notifSettings.smtp_enabled"> Abilita Notifiche Email</label>
                         </div>
-                        <div class="grid-2" v-if="notifSettings.smtp_enabled">
-                            <div class="form-group">
-                                <label class="form-label">Server SMTP</label>
-                                <input type="text" class="form-input" v-model="notifSettings.smtp_host">
+                        
+                        <div v-if="notifSettings.smtp_enabled">
+                            <h4 style="color: var(--accent-primary); margin: 20px 0 12px;">📧 Configurazione Server SMTP</h4>
+                            <div class="grid-2">
+                                <div class="form-group">
+                                    <label class="form-label">Server SMTP</label>
+                                    <input type="text" class="form-input" v-model="notifSettings.smtp_host" placeholder="smtp.gmail.com">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Porta</label>
+                                    <input type="number" class="form-input" v-model="notifSettings.smtp_port" placeholder="587">
+                                </div>
+                            </div>
+                            <div class="grid-2">
+                                <div class="form-group">
+                                    <label class="form-label">Username SMTP</label>
+                                    <input type="text" class="form-input" v-model="notifSettings.smtp_user" placeholder="user@example.com">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Password SMTP</label>
+                                    <input type="password" class="form-input" v-model="notifSettings.smtp_password" placeholder="••••••••">
+                                </div>
                             </div>
                             <div class="form-group">
-                                <label class="form-label">Porta</label>
-                                <input type="number" class="form-input" v-model="notifSettings.smtp_port">
+                                <label class="form-label"><input type="checkbox" v-model="notifSettings.smtp_tls"> Usa TLS (STARTTLS)</label>
+                                <small style="color: var(--text-secondary); display: block; margin-top: 4px;">Abilita per porta 587, disabilita per SSL diretto (porta 465)</small>
+                            </div>
+                            
+                            <h4 style="color: var(--accent-secondary); margin: 20px 0 12px;">📤 Mittente e Destinatari</h4>
+                            <div class="grid-2">
+                                <div class="form-group">
+                                    <label class="form-label">Email Mittente (From)</label>
+                                    <input type="email" class="form-input" v-model="notifSettings.smtp_from" placeholder="sanoid@example.com">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Email Destinatari (To)</label>
+                                    <input type="text" class="form-input" v-model="notifSettings.smtp_to" placeholder="admin@example.com, team@example.com">
+                                    <small style="color: var(--text-secondary);">Separare più indirizzi con virgola</small>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Prefisso Oggetto Email</label>
+                                <input type="text" class="form-input" v-model="notifSettings.smtp_subject_prefix" placeholder="[Sanoid Manager]">
+                                <small style="color: var(--text-secondary);">Es: "[Backup Proxmox]" → "[Backup Proxmox] ✅ Replica Completata"</small>
+                            </div>
+                            
+                            <div style="margin-top: 16px;">
+                                <button class="btn btn-secondary" @click="testEmailNotification" :disabled="loading || !notifSettings.smtp_host || !notifSettings.smtp_to">
+                                    🧪 Invia Email di Test
+                                </button>
                             </div>
                         </div>
+                        
                         <hr style="border-color: var(--border-color); margin: 20px 0;">
-                        <div class="form-group">
-                            <label class="form-label"><input type="checkbox" v-model="notifSettings.notify_on_failure"> Notifica su errori</label>
+                        
+                        <h4 style="color: var(--accent-warning); margin-bottom: 12px;">🔔 Quando Notificare</h4>
+                        <div class="grid-2">
+                            <div class="form-group">
+                                <label class="form-label"><input type="checkbox" v-model="notifSettings.notify_on_failure"> ❌ Notifica su errori</label>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label"><input type="checkbox" v-model="notifSettings.notify_on_success"> ✅ Notifica su successi</label>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label"><input type="checkbox" v-model="notifSettings.notify_on_warning"> ⚠️ Notifica su warning</label>
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label class="form-label"><input type="checkbox" v-model="notifSettings.notify_on_success"> Notifica su successi</label>
+                        
+                        <div style="margin-top: 20px;">
+                            <button class="btn btn-primary" @click="saveNotifSettings" :disabled="loading">💾 Salva Configurazione</button>
                         </div>
-                        <button class="btn btn-primary" @click="saveNotifSettings" :disabled="loading">Salva</button>
-                </div>
+                    </div>
             </div>
         </main>
         </template>
@@ -1751,7 +1805,20 @@
                 // Settings
                 const settings = ref({ syncoid_default_compress: 'lz4', syncoid_default_mbuffer: '128M', log_retention_days: 30 });
                 const authSettings = ref({ auth_method: 'proxmox', auth_session_timeout: 480, auth_allow_local_fallback: true });
-                const notifSettings = ref({ smtp_enabled: false, smtp_host: '', smtp_port: 587, notify_on_failure: true, notify_on_success: false });
+                const notifSettings = ref({ 
+                    smtp_enabled: false, 
+                    smtp_host: '', 
+                    smtp_port: 587, 
+                    smtp_user: '',
+                    smtp_password: '',
+                    smtp_from: '',
+                    smtp_to: '',
+                    smtp_subject_prefix: '[Sanoid Manager]',
+                    smtp_tls: true,
+                    notify_on_failure: true, 
+                    notify_on_success: false,
+                    notify_on_warning: true
+                });
                 
                 // Modals
                 const showNodeModal = ref(false);
@@ -1959,6 +2026,16 @@
                 const loadUsers = async () => {
                     if (currentUser.value?.role !== 'admin') return;
                     try { users.value = (await axios.get(`${API}/auth/users`)).data; } catch (e) {}
+                };
+                
+                const loadNotifSettings = async () => {
+                    if (currentUser.value?.role !== 'admin') return;
+                    try {
+                        const res = await axios.get(`${API}/settings/notifications`);
+                        notifSettings.value = { ...notifSettings.value, ...res.data };
+                    } catch (e) {
+                        console.log('Notifiche non configurate');
+                    }
                 };
                 
                 const loadNodeDatasets = async () => {
@@ -2405,6 +2482,20 @@
                     loading.value = false;
                 };
                 
+                const testEmailNotification = async () => {
+                    loading.value = true;
+                    try {
+                        // Prima salva la configurazione
+                        await axios.put(`${API}/settings/notifications`, notifSettings.value);
+                        // Poi invia il test
+                        const res = await axios.post(`${API}/settings/notifications/test?channel=email`);
+                        showToast(res.data.message || 'Email di test inviata!', 'success');
+                    } catch (e) {
+                        showToast(e.response?.data?.detail || 'Errore invio email di test', 'error');
+                    }
+                    loading.value = false;
+                };
+                
                 // Init
                 onMounted(async () => {
                     if (checkAuth()) {
@@ -2431,7 +2522,7 @@
                     isAdmin, canEdit,
                     showToast, formatDate, getStatusClass,
                     doSetup, doLogin, doLogout,
-                    loadNodes, loadSyncJobs, loadLogs, loadNodeDatasets, loadNodeSnapshots, loadNodeVms,
+                    loadNodes, loadSyncJobs, loadLogs, loadNotifSettings, loadNodeDatasets, loadNodeSnapshots, loadNodeVms,
                     loadSourceDatasets, loadDestDatasets, onDestNodeChange, updateDestDataset, applySchedule, showLogDetail,
                     // VM Replica functions
                     loadSourceVMs, loadDestPools, selectVMForReplica, cancelVMReplica, createVMReplica,
@@ -2443,7 +2534,7 @@
                     createSyncJob, runSyncJob, toggleSyncJob, deleteSyncJob, editSyncJob, registerJobVM,
                     getVmDatasets,
                     editUser, saveUser, deleteUser,
-                    saveSettings, saveAuthSettings, saveNotifSettings
+                    saveSettings, saveAuthSettings, saveNotifSettings, testEmailNotification
                 };
             }
         }).mount('#app');
