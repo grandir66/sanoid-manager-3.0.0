@@ -9,7 +9,7 @@ set -e
 
 # ============== CONFIGURAZIONE ==============
 VERSION="3.0.0"
-GITHUB_REPO="tuouser/sanoid-manager"  # Modifica con il tuo repo GitHub
+GITHUB_REPO="grandir66/sanoid-manager-3.0.0"
 INSTALL_DIR="/opt/sanoid-manager"
 DATA_DIR="/var/lib/sanoid-manager"
 LOG_DIR="/var/log/sanoid-manager"

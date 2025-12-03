@@ -7,7 +7,7 @@
 set -e
 
 # Configurazione
-GITHUB_REPO="tuouser/sanoid-manager"  # Modifica con il tuo repo
+GITHUB_REPO="grandir66/sanoid-manager-3.0.0"
 INSTALL_DIR="/opt/sanoid-manager"
 BACKUP_DIR="/opt/sanoid-manager-backup"
 SERVICE_NAME="sanoid-manager"
