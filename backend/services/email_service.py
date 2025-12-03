@@ -89,17 +89,24 @@ class EmailService:
             msg.attach(MIMEText(body, content_type, "utf-8"))
             
             # Connessione SMTP
-            if self.use_tls:
+            if self.port == 465:
+                # SSL diretto (porta 465)
                 context = ssl.create_default_context()
-                with smtplib.SMTP(self.host, self.port) as server:
+                with smtplib.SMTP_SSL(self.host, self.port, context=context) as server:
+                    if self.user and self.password:
+                        server.login(self.user, self.password)
+                    server.sendmail(self.from_addr, recipients, msg.as_string())
+            elif self.use_tls:
+                # STARTTLS (porta 587)
+                context = ssl.create_default_context()
+                with smtplib.SMTP(self.host, self.port, timeout=30) as server:
                     server.starttls(context=context)
                     if self.user and self.password:
                         server.login(self.user, self.password)
                     server.sendmail(self.from_addr, recipients, msg.as_string())
             else:
-                # SSL diretto (porta 465)
-                context = ssl.create_default_context()
-                with smtplib.SMTP_SSL(self.host, self.port, context=context) as server:
+                # Nessuna cifratura (porta 25 o altre)
+                with smtplib.SMTP(self.host, self.port, timeout=30) as server:
                     if self.user and self.password:
                         server.login(self.user, self.password)
                     server.sendmail(self.from_addr, recipients, msg.as_string())

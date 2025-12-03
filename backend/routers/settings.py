@@ -6,7 +6,7 @@ Con autenticazione e configurazione avanzata
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from typing import Optional, Dict, Any, List
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from datetime import datetime
 
 from database import (
@@ -67,6 +67,13 @@ class NotificationConfigUpdate(BaseModel):
     notify_on_success: Optional[bool] = None
     notify_on_failure: Optional[bool] = None
     notify_on_warning: Optional[bool] = None
+    
+    @field_validator('smtp_port', mode='before')
+    @classmethod
+    def convert_port_to_int(cls, v):
+        if v is None or v == '':
+            return None
+        return int(v)
 
 
 class NotificationConfigResponse(BaseModel):
