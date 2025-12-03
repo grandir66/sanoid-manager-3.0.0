@@ -17,6 +17,193 @@ from routers.auth import get_current_user, require_operator, require_admin, log_
 router = APIRouter()
 
 
+# ============== Helper Function per esecuzione job ==============
+
+async def execute_sync_job_task(job_id: int, triggered_by_user_id: int = None):
+    """
+    Funzione standalone per eseguire un job di sincronizzazione.
+    Può essere usata da più endpoint come task in background.
+    """
+    from database import SessionLocal, SyncJob, Node, JobLog
+    from services.syncoid_service import syncoid_service
+    from services.ssh_service import ssh_service
+    import traceback
+    
+    db_session = SessionLocal()
+    log_entry = None
+    job_record = None
+    
+    try:
+        # Recupera job e nodi dal database
+        job = db_session.query(SyncJob).filter(SyncJob.id == job_id).first()
+        if not job:
+            return
+        
+        source_node = db_session.query(Node).filter(Node.id == job.source_node_id).first()
+        dest_node = db_session.query(Node).filter(Node.id == job.dest_node_id).first()
+        
+        if not source_node or not dest_node:
+            return
+        
+        # Crea log entry
+        log_entry = JobLog(
+            job_type="sync",
+            job_id=job_id,
+            node_name=f"{source_node.name} -> {dest_node.name}",
+            dataset=f"{job.source_dataset} -> {job.dest_dataset}",
+            status="started",
+            triggered_by=triggered_by_user_id
+        )
+        db_session.add(log_entry)
+        db_session.commit()
+        
+        # Aggiorna stato
+        job_record = db_session.query(SyncJob).filter(SyncJob.id == job_id).first()
+        job_record.last_status = "running"
+        db_session.commit()
+        
+        # Crea dataset parent sulla destinazione se non esiste
+        dest_parent = "/".join(job.dest_dataset.split("/")[:-1])
+        if dest_parent:
+            check_result = await ssh_service.execute(
+                hostname=dest_node.hostname,
+                command=f"zfs list -H -o name {dest_parent} 2>/dev/null || echo 'NOT_EXISTS'",
+                port=dest_node.ssh_port,
+                username=dest_node.ssh_user,
+                key_path=dest_node.ssh_key_path,
+                timeout=30
+            )
+            
+            if "NOT_EXISTS" in check_result.stdout or not check_result.success:
+                create_result = await ssh_service.execute(
+                    hostname=dest_node.hostname,
+                    command=f"zfs create -p {dest_parent}",
+                    port=dest_node.ssh_port,
+                    username=dest_node.ssh_user,
+                    key_path=dest_node.ssh_key_path,
+                    timeout=30
+                )
+                if create_result.success:
+                    log_entry.message = f"Creato dataset parent: {dest_parent}"
+                else:
+                    log_entry.message = f"Attenzione: impossibile creare {dest_parent}: {create_result.stderr}"
+        
+        # Esegui sync
+        result = await syncoid_service.run_sync(
+            executor_host=source_node.hostname,
+            source_host=None,
+            source_dataset=job.source_dataset,
+            dest_host=dest_node.hostname,
+            dest_dataset=job.dest_dataset,
+            dest_user=dest_node.ssh_user,
+            dest_port=dest_node.ssh_port,
+            dest_key=dest_node.ssh_key_path,
+            executor_port=source_node.ssh_port,
+            executor_user=source_node.ssh_user,
+            executor_key=source_node.ssh_key_path,
+            recursive=job.recursive,
+            compress=job.compress or "lz4",
+            mbuffer_size=job.mbuffer_size or "128M",
+            no_sync_snap=job.no_sync_snap,
+            force_delete=job.force_delete,
+            extra_args=job.extra_args or ""
+        )
+        
+        # Aggiorna job e log
+        job_record.last_run = datetime.utcnow()
+        job_record.last_duration = result["duration"]
+        job_record.last_transferred = result.get("transferred")
+        job_record.run_count += 1
+        
+        if result["success"]:
+            job_record.last_status = "success"
+            job_record.consecutive_failures = 0
+            log_entry.status = "success"
+            log_entry.message = (log_entry.message or "") + " Sincronizzazione completata"
+            
+            # Registrazione VM se richiesta
+            if job.register_vm and job.vm_id:
+                from services.proxmox_service import proxmox_service
+                target_vmid = job.dest_vm_id if job.dest_vm_id else job.vm_id
+                
+                try:
+                    vm_type = job.vm_type or "qemu"
+                    config_path = f"/etc/pve/qemu-server/{job.vm_id}.conf" if vm_type == "qemu" else f"/etc/pve/lxc/{job.vm_id}.conf"
+                    
+                    config_result = await ssh_service.execute(
+                        hostname=source_node.hostname,
+                        command=f"cat {config_path} 2>/dev/null",
+                        port=source_node.ssh_port,
+                        username=source_node.ssh_user,
+                        key_path=source_node.ssh_key_path,
+                        timeout=30
+                    )
+                    
+                    if config_result.success and config_result.stdout.strip():
+                        dest_zfs_pool = "/".join(job.dest_dataset.split("/")[:-1]) or job.dest_dataset.split("/")[0]
+                        
+                        success, msg = await proxmox_service.register_vm(
+                            hostname=dest_node.hostname,
+                            vmid=target_vmid,
+                            vm_type=vm_type,
+                            config_content=config_result.stdout,
+                            source_storage=job.source_storage,
+                            dest_storage=job.dest_storage,
+                            dest_zfs_pool=dest_zfs_pool,
+                            port=dest_node.ssh_port,
+                            username=dest_node.ssh_user,
+                            key_path=dest_node.ssh_key_path
+                        )
+                        
+                        if success:
+                            vm_info = f"VM {target_vmid}" + (f" (da {job.vm_id})" if target_vmid != job.vm_id else "")
+                            log_entry.message += f" | {vm_info} registrata"
+                        else:
+                            log_entry.message += f" | Registrazione VM fallita: {msg}"
+                    else:
+                        log_entry.message += f" | Config VM non trovata su sorgente"
+                except Exception as e:
+                    log_entry.message += f" | Errore registrazione VM: {str(e)}"
+        else:
+            job_record.last_status = "failed"
+            job_record.error_count += 1
+            job_record.consecutive_failures += 1
+            log_entry.status = "failed"
+            error_msg = result.get("error", "")
+            if result.get("output") and "error" in result.get("output", "").lower():
+                error_msg = f"{error_msg}\n\nOutput:\n{result.get('output')}" if error_msg else result.get("output")
+            error_msg = f"Comando: {result.get('command', 'N/A')}\n\n{error_msg}" if error_msg else f"Comando: {result.get('command', 'N/A')}\nErrore sconosciuto"
+            log_entry.error = error_msg
+        
+        log_entry.output = result.get("output")
+        log_entry.duration = result["duration"]
+        log_entry.transferred = result.get("transferred")
+        log_entry.completed_at = datetime.utcnow()
+        
+        db_session.commit()
+        
+    except Exception as e:
+        if log_entry:
+            log_entry.status = "failed"
+            log_entry.error = f"Eccezione Python: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
+            log_entry.completed_at = datetime.utcnow()
+        
+        if job_record:
+            try:
+                job_record.last_status = "failed"
+                job_record.error_count += 1
+                job_record.consecutive_failures += 1
+            except:
+                pass
+        
+        try:
+            db_session.commit()
+        except:
+            pass
+    finally:
+        db_session.close()
+
+
 # ============== Schemas ==============
 
 class SyncJobCreate(BaseModel):
@@ -389,7 +576,7 @@ async def run_vm_group_jobs(
     started = 0
     for job in jobs:
         if check_job_access(user, job, db) and job.is_active:
-            background_tasks.add_task(execute_job, job.id, db)
+            background_tasks.add_task(execute_sync_job_task, job.id, user.id)
             started += 1
     
     return {
@@ -543,192 +730,8 @@ async def run_sync_job(
     if not source_node or not dest_node:
         raise HTTPException(status_code=400, detail="Nodi non configurati correttamente")
     
-    # Esegui in background
-    async def execute_job():
-        from database import SessionLocal
-        db_session = SessionLocal()
-        try:
-            # Crea log entry
-            log_entry = JobLog(
-                job_type="sync",
-                job_id=job_id,
-                node_name=f"{source_node.name} -> {dest_node.name}",
-                dataset=f"{job.source_dataset} -> {job.dest_dataset}",
-                status="started",
-                triggered_by=user.id
-            )
-            db_session.add(log_entry)
-            db_session.commit()
-            
-            # Aggiorna stato
-            job_record = db_session.query(SyncJob).filter(SyncJob.id == job_id).first()
-            job_record.last_status = "running"
-            db_session.commit()
-            
-            # Crea dataset parent sulla destinazione se non esiste
-            dest_parent = "/".join(job.dest_dataset.split("/")[:-1])
-            if dest_parent:
-                from services.ssh_service import ssh_service
-                # Verifica se il parent esiste
-                check_result = await ssh_service.execute(
-                    hostname=dest_node.hostname,
-                    command=f"zfs list -H -o name {dest_parent} 2>/dev/null || echo 'NOT_EXISTS'",
-                    port=dest_node.ssh_port,
-                    username=dest_node.ssh_user,
-                    key_path=dest_node.ssh_key_path,
-                    timeout=30
-                )
-                
-                if "NOT_EXISTS" in check_result.stdout or not check_result.success:
-                    # Crea il parent con -p (crea tutti i parent necessari)
-                    create_result = await ssh_service.execute(
-                        hostname=dest_node.hostname,
-                        command=f"zfs create -p {dest_parent}",
-                        port=dest_node.ssh_port,
-                        username=dest_node.ssh_user,
-                        key_path=dest_node.ssh_key_path,
-                        timeout=30
-                    )
-                    if create_result.success:
-                        log_entry.message = f"Creato dataset parent: {dest_parent}"
-                    else:
-                        log_entry.message = f"Attenzione: impossibile creare {dest_parent}: {create_result.stderr}"
-            
-            # Esegui sync
-            result = await syncoid_service.run_sync(
-                executor_host=source_node.hostname,
-                source_host=None,
-                source_dataset=job.source_dataset,
-                dest_host=dest_node.hostname,
-                dest_dataset=job.dest_dataset,
-                dest_user=dest_node.ssh_user,
-                dest_port=dest_node.ssh_port,
-                dest_key=dest_node.ssh_key_path,
-                executor_port=source_node.ssh_port,
-                executor_user=source_node.ssh_user,
-                executor_key=source_node.ssh_key_path,
-                recursive=job.recursive,
-                compress=job.compress or "lz4",
-                mbuffer_size=job.mbuffer_size or "128M",
-                no_sync_snap=job.no_sync_snap,
-                force_delete=job.force_delete,
-                extra_args=job.extra_args or ""
-            )
-            
-            # Aggiorna job e log
-            job_record.last_run = datetime.utcnow()
-            job_record.last_duration = result["duration"]
-            job_record.last_transferred = result.get("transferred")
-            job_record.run_count += 1
-            
-            if result["success"]:
-                job_record.last_status = "success"
-                job_record.consecutive_failures = 0
-                log_entry.status = "success"
-                log_entry.message = "Sincronizzazione completata"
-                
-                # Registrazione VM se richiesta
-                if job.register_vm and job.vm_id:
-                    from services.proxmox_service import proxmox_service
-                    
-                    # Usa dest_vm_id se specificato, altrimenti usa vm_id
-                    target_vmid = job.dest_vm_id if job.dest_vm_id else job.vm_id
-                    
-                    try:
-                        # Ottieni la configurazione dalla sorgente
-                        vm_type = job.vm_type or "qemu"
-                        if vm_type == "qemu":
-                            config_path = f"/etc/pve/qemu-server/{job.vm_id}.conf"
-                            get_config_cmd = f"cat {config_path} 2>/dev/null"
-                        else:
-                            config_path = f"/etc/pve/lxc/{job.vm_id}.conf"
-                            get_config_cmd = f"cat {config_path} 2>/dev/null"
-                        
-                        config_result = await ssh_service.execute(
-                            hostname=source_node.hostname,
-                            command=get_config_cmd,
-                            port=source_node.ssh_port,
-                            username=source_node.ssh_user,
-                            key_path=source_node.ssh_key_path,
-                            timeout=30
-                        )
-                        
-                        if config_result.success and config_result.stdout.strip():
-                            # Modifica la configurazione per il nuovo nodo
-                            config_content = config_result.stdout
-                            
-                            # Determina il pool ZFS destinazione per creare lo storage
-                            dest_zfs_pool = "/".join(job.dest_dataset.split("/")[:-1])
-                            if not dest_zfs_pool:
-                                dest_zfs_pool = job.dest_dataset.split("/")[0]
-                            
-                            # Registra la VM sulla destinazione con ID diverso se specificato
-                            # Il proxmox_service gestirà la sostituzione dello storage e la creazione se necessario
-                            success, msg = await proxmox_service.register_vm(
-                                hostname=dest_node.hostname,
-                                vmid=target_vmid,
-                                vm_type=vm_type,
-                                config_content=config_content,
-                                source_storage=job.source_storage,
-                                dest_storage=job.dest_storage,
-                                dest_zfs_pool=dest_zfs_pool,
-                                port=dest_node.ssh_port,
-                                username=dest_node.ssh_user,
-                                key_path=dest_node.ssh_key_path
-                            )
-                            
-                            if success:
-                                vm_info = f"VM {target_vmid}" + (f" (da {job.vm_id})" if target_vmid != job.vm_id else "")
-                                log_entry.message += f" | {vm_info} registrata"
-                            else:
-                                log_entry.message += f" | Registrazione VM fallita: {msg}"
-                        else:
-                            log_entry.message += f" | Config VM non trovata su sorgente"
-                    
-                    except Exception as e:
-                        log_entry.message += f" | Errore registrazione VM: {str(e)}"
-                
-            else:
-                job_record.last_status = "failed"
-                job_record.error_count += 1
-                job_record.consecutive_failures += 1
-                log_entry.status = "failed"
-                # Combina stderr e output per error completo
-                error_msg = result.get("error", "")
-                if result.get("output") and "error" in result.get("output", "").lower():
-                    error_msg = f"{error_msg}\n\nOutput:\n{result.get('output')}" if error_msg else result.get("output")
-                # Aggiungi il comando eseguito per debug
-                error_msg = f"Comando: {result.get('command', 'N/A')}\n\n{error_msg}" if error_msg else f"Comando: {result.get('command', 'N/A')}\nErrore sconosciuto"
-                log_entry.error = error_msg
-            
-            log_entry.output = result.get("output")
-            log_entry.duration = result["duration"]
-            log_entry.transferred = result.get("transferred")
-            log_entry.completed_at = datetime.utcnow()
-            
-            db_session.commit()
-            
-        except Exception as e:
-            import traceback
-            log_entry.status = "failed"
-            log_entry.error = f"Eccezione Python: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
-            log_entry.completed_at = datetime.utcnow()
-            
-            # Aggiorna anche lo stato del job
-            try:
-                job_record = db_session.query(SyncJob).filter(SyncJob.id == job_id).first()
-                if job_record:
-                    job_record.last_status = "failed"
-                    job_record.error_count += 1
-                    job_record.consecutive_failures += 1
-            except:
-                pass
-            
-            db_session.commit()
-        finally:
-            db_session.close()
-    
-    background_tasks.add_task(execute_job)
+    # Esegui in background usando la funzione helper
+    background_tasks.add_task(execute_sync_job_task, job_id, user.id)
     
     log_audit(
         db, user.id, "sync_job_started", "sync_job",
