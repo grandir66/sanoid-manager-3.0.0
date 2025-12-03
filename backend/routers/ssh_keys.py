@@ -232,6 +232,59 @@ async def test_single_connection(node_id: int, db: Session = Depends(get_db)):
     }
 
 
+@router.post("/setup-mesh")
+async def setup_mesh_ssh(request: DistributeKeyRequest, db: Session = Depends(get_db)):
+    """
+    Configura SSH mesh: copia la stessa coppia di chiavi su tutti i nodi.
+    Questo permette a ogni nodo di connettersi a ogni altro nodo usando la stessa chiave.
+    """
+    
+    # Verifica che esista una chiave locale
+    key_info = ssh_key_service.get_key_info()
+    if not key_info.exists:
+        raise HTTPException(status_code=400, detail="Nessuna chiave SSH locale trovata. Genera prima una chiave.")
+    
+    # Ottieni nodi
+    if request.node_ids:
+        nodes = db.query(Node).filter(Node.id.in_(request.node_ids)).all()
+    else:
+        nodes = db.query(Node).all()
+    
+    if not nodes:
+        raise HTTPException(status_code=404, detail="Nessun nodo trovato")
+    
+    # Prepara lista nodi
+    node_list = [
+        {
+            "id": node.id,
+            "name": node.name,
+            "host": node.hostname,
+            "port": node.ssh_port or 22,
+            "username": node.ssh_user or "root"
+        }
+        for node in nodes
+    ]
+    
+    # Esegui setup mesh
+    results = await ssh_key_service.setup_mesh_ssh(nodes=node_list)
+    
+    # Statistiche
+    success_count = sum(1 for r in results if r.get('success'))
+    failed_count = len(results) - success_count
+    
+    return {
+        "success": failed_count == 0,
+        "message": f"Setup mesh completato: {success_count}/{len(results)} nodi configurati",
+        "results": results,
+        "public_key": key_info.public_key,
+        "stats": {
+            "total": len(results),
+            "success": success_count,
+            "failed": failed_count
+        }
+    }
+
+
 @router.post("/force-sync")
 async def force_sync_keys(request: DistributeKeyRequest, db: Session = Depends(get_db)):
     """

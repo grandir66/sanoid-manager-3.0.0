@@ -398,6 +398,125 @@ class SSHKeyService:
         
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, _remove)
+    
+    async def copy_keypair_to_host(
+        self,
+        hostname: str,
+        port: int = 22,
+        username: str = "root",
+        key_path: str = None
+    ) -> Tuple[bool, str]:
+        """
+        Copia la coppia di chiavi (privata e pubblica) su un host remoto.
+        Questo permette all'host di usare la stessa chiave per connettersi ad altri nodi.
+        """
+        key_path = key_path or self.DEFAULT_KEY_PATH
+        pub_key_path = f"{key_path}.pub"
+        
+        if not os.path.exists(key_path) or not os.path.exists(pub_key_path):
+            return False, "Chiavi locali non trovate"
+        
+        try:
+            # Leggi le chiavi locali
+            with open(key_path, 'r') as f:
+                private_key = f.read()
+            with open(pub_key_path, 'r') as f:
+                public_key = f.read().strip()
+            
+            def _copy():
+                client = paramiko.SSHClient()
+                client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                
+                try:
+                    client.connect(
+                        hostname=hostname,
+                        port=port,
+                        username=username,
+                        key_filename=key_path,
+                        timeout=10
+                    )
+                    
+                    # Crea directory .ssh se non esiste
+                    client.exec_command("mkdir -p ~/.ssh && chmod 700 ~/.ssh")
+                    
+                    # Usa SFTP per copiare i file
+                    sftp = client.open_sftp()
+                    
+                    # Scrivi chiave privata
+                    remote_key_path = f"/root/.ssh/id_rsa"
+                    with sftp.file(remote_key_path, 'w') as f:
+                        f.write(private_key)
+                    sftp.chmod(remote_key_path, 0o600)
+                    
+                    # Scrivi chiave pubblica
+                    remote_pub_path = f"/root/.ssh/id_rsa.pub"
+                    with sftp.file(remote_pub_path, 'w') as f:
+                        f.write(public_key + '\n')
+                    sftp.chmod(remote_pub_path, 0o644)
+                    
+                    sftp.close()
+                    
+                    return True, "Coppia di chiavi copiata con successo"
+                    
+                except Exception as e:
+                    return False, str(e)
+                finally:
+                    client.close()
+            
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(None, _copy)
+            
+        except Exception as e:
+            logger.error(f"Errore copia chiavi a {hostname}: {e}")
+            return False, str(e)
+    
+    async def setup_mesh_ssh(
+        self,
+        nodes: List[Dict],
+        key_path: str = None
+    ) -> List[Dict]:
+        """
+        Configura SSH mesh: copia la stessa chiave su tutti i nodi
+        e aggiunge la chiave pubblica agli authorized_keys di tutti.
+        
+        Questo permette a ogni nodo di connettersi a ogni altro nodo.
+        """
+        results = []
+        key_path = key_path or self.DEFAULT_KEY_PATH
+        
+        for node in nodes:
+            hostname = node.get('host') or node.get('ip')
+            port = node.get('port', 22)
+            username = node.get('username', 'root')
+            
+            # Step 1: Copia la coppia di chiavi
+            copy_success, copy_msg = await self.copy_keypair_to_host(
+                hostname=hostname,
+                port=port,
+                username=username,
+                key_path=key_path
+            )
+            
+            # Step 2: Aggiungi chiave pubblica agli authorized_keys
+            dist_result = await self.distribute_key_to_host(
+                hostname=hostname,
+                port=port,
+                username=username,
+                key_path=key_path
+            )
+            
+            results.append({
+                "node_id": node.get('id'),
+                "node_name": node.get('name'),
+                "host": hostname,
+                "keypair_copied": copy_success,
+                "keypair_message": copy_msg,
+                "authorized": dist_result.success,
+                "auth_message": dist_result.message,
+                "success": copy_success and dist_result.success
+            })
+        
+        return results
 
 
 # Singleton instance

@@ -1534,8 +1534,11 @@
                             <button class="btn btn-secondary" @click="testAllSSHConnections" :disabled="loading" style="margin-right: 8px;">
                                 🧪 Testa Tutti
                             </button>
-                            <button class="btn btn-primary" @click="showDistributeModal = true" :disabled="loading || !sshKeyInfo.exists">
-                                🚀 Distribuisci Chiave
+                            <button class="btn btn-secondary" @click="showDistributeModal = true" :disabled="loading || !sshKeyInfo.exists" style="margin-right: 8px;">
+                                🔑 Distribuisci Chiave
+                            </button>
+                            <button class="btn btn-primary" @click="setupMeshSSH" :disabled="loading || !sshKeyInfo.exists">
+                                🔄 Setup Mesh
                             </button>
                         </div>
                     </div>
@@ -1586,10 +1589,18 @@
                     <div style="color: var(--text-secondary); font-size: 14px; line-height: 1.8;">
                         <p><strong>1. Genera/Verifica Chiave:</strong> Assicurati che esista una chiave SSH locale.</p>
                         <p><strong>2. Aggiungi Nodi:</strong> Configura i nodi Proxmox nella sezione "Nodi".</p>
-                        <p><strong>3. Distribuisci Chiave:</strong> Usa il pulsante "Distribuisci" per copiare la chiave pubblica sui nodi.</p>
-                        <p><strong>4. Testa Connessioni:</strong> Verifica che la connessione SSH funzioni senza password.</p>
-                        <p style="margin-top: 16px; padding: 12px; background: var(--bg-tertiary); border-radius: 8px;">
-                            💡 <strong>Tip:</strong> Se la distribuzione automatica fallisce, copia manualmente la chiave pubblica su ogni nodo:
+                        <p><strong>3. Distribuisci Chiave:</strong> Copia solo la chiave pubblica (per connessioni dal server centrale).</p>
+                        <p><strong>4. Setup Mesh:</strong> <span style="color: var(--accent-primary);">Copia la stessa chiave su tutti i nodi</span> per permettere replica bidirezionale tra qualsiasi coppia di nodi.</p>
+                        <p><strong>5. Testa Connessioni:</strong> Verifica che tutto funzioni senza password.</p>
+                        
+                        <div style="margin-top: 16px; padding: 12px; background: var(--bg-tertiary); border-radius: 8px;">
+                            <strong style="color: var(--accent-warning);">🔄 Setup Mesh</strong><br>
+                            Copia la <strong>stessa coppia di chiavi</strong> (pubblica + privata) su tutti i nodi.<br>
+                            Ogni nodo potrà connettersi a ogni altro nodo senza password.
+                        </div>
+                        
+                        <p style="margin-top: 12px; padding: 12px; background: var(--bg-tertiary); border-radius: 8px;">
+                            💡 <strong>Tip:</strong> Se la distribuzione automatica fallisce, esegui manualmente:
                             <br><code style="color: var(--accent-primary);">ssh-copy-id -i /root/.ssh/id_rsa.pub root@NODO_IP</code>
                         </p>
                     </div>
@@ -2840,6 +2851,42 @@
                     loading.value = false;
                 };
                 
+                const setupMeshSSH = async () => {
+                    if (!confirm('Questo copierà la stessa chiave SSH su TUTTI i nodi, permettendo a ogni nodo di connettersi agli altri.\n\nContinuare?')) return;
+                    
+                    loading.value = true;
+                    try {
+                        const res = await axios.post(`${API}/ssh-keys/setup-mesh`, {});
+                        
+                        // Mostra risultati dettagliati
+                        let msg = `Setup Mesh: ${res.data.stats.success}/${res.data.stats.total} nodi configurati\n\n`;
+                        for (const r of res.data.results) {
+                            const icon = r.success ? '✅' : '❌';
+                            msg += `${icon} ${r.node_name}: ${r.keypair_copied ? 'chiavi copiate' : r.keypair_message}\n`;
+                        }
+                        
+                        if (res.data.stats.failed > 0) {
+                            showToast(`Setup mesh parziale: ${res.data.stats.success}/${res.data.stats.total}`, 'warning');
+                        } else {
+                            showToast('Setup mesh completato! Tutti i nodi possono ora comunicare tra loro.', 'success');
+                        }
+                        
+                        // Aggiorna test results
+                        for (const r of res.data.results) {
+                            if (r.node_id) {
+                                sshTestResults.value[r.node_id] = { 
+                                    success: r.success, 
+                                    message: r.success ? 'Mesh configurato' : r.keypair_message 
+                                };
+                            }
+                        }
+                        
+                    } catch (e) {
+                        showToast(e.response?.data?.detail || 'Errore setup mesh', 'error');
+                    }
+                    loading.value = false;
+                };
+                
                 // Init
                 onMounted(async () => {
                     if (checkAuth()) {
@@ -2883,7 +2930,8 @@
                     saveSettings, saveAuthSettings, saveNotifSettings, testEmailNotification,
                     // SSH Keys functions
                     loadSSHKeyInfo, generateSSHKey, regenerateSSHKey, copyPublicKey,
-                    testAllSSHConnections, testSingleSSH, distributeSingleKey, distributeKeyToSelected
+                    testAllSSHConnections, testSingleSSH, distributeSingleKey, distributeKeyToSelected,
+                    setupMeshSSH
                 };
             }
         }).mount('#app');
