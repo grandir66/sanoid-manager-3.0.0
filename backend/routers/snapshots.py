@@ -185,6 +185,151 @@ async def delete_snapshot(
         return {"success": False, "message": result.stderr}
 
 
+@router.post("/node/{node_id}/rollback")
+async def rollback_snapshot(
+    node_id: int,
+    full_name: str,
+    force: bool = False,
+    request: Request = None,
+    user: User = Depends(require_operator),
+    db: Session = Depends(get_db)
+):
+    """
+    Rollback di un dataset a uno snapshot.
+    ATTENZIONE: Operazione distruttiva! Tutti i dati dopo lo snapshot verranno persi.
+    
+    Args:
+        full_name: Nome completo snapshot (es: pool/dataset@snapshot)
+        force: Se True, forza il rollback anche con snapshot più recenti (-r)
+    """
+    node = db.query(Node).filter(Node.id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    
+    if not check_node_access(user, node):
+        raise HTTPException(status_code=403, detail="Accesso negato a questo nodo")
+    
+    # Costruisci comando rollback
+    force_flag = "-r" if force else ""
+    cmd = f"zfs rollback {force_flag} {full_name}"
+    
+    result = await ssh_service.execute(
+        hostname=node.hostname,
+        command=cmd,
+        port=node.ssh_port,
+        username=node.ssh_user,
+        key_path=node.ssh_key_path,
+        timeout=300
+    )
+    
+    if result.success:
+        log_audit(
+            db, user.id, "snapshot_rollback", "snapshot",
+            details=f"Rollback to {full_name} on {node.name}",
+            ip_address=request.client.host if request.client else None
+        )
+        return {"success": True, "message": f"Rollback a {full_name} completato"}
+    else:
+        return {"success": False, "message": result.stderr or result.stdout}
+
+
+@router.post("/node/{node_id}/clone")
+async def clone_snapshot(
+    node_id: int,
+    full_name: str,
+    clone_name: str,
+    request: Request = None,
+    user: User = Depends(require_operator),
+    db: Session = Depends(get_db)
+):
+    """
+    Crea un clone da uno snapshot.
+    Il clone è una copia scrivibile del dataset allo stato dello snapshot.
+    Non distruttivo - l'originale rimane intatto.
+    
+    Args:
+        full_name: Nome completo snapshot (es: pool/dataset@snapshot)
+        clone_name: Nome del nuovo dataset clone (es: pool/dataset-clone)
+    """
+    node = db.query(Node).filter(Node.id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    
+    if not check_node_access(user, node):
+        raise HTTPException(status_code=403, detail="Accesso negato a questo nodo")
+    
+    # Costruisci comando clone
+    cmd = f"zfs clone {full_name} {clone_name}"
+    
+    result = await ssh_service.execute(
+        hostname=node.hostname,
+        command=cmd,
+        port=node.ssh_port,
+        username=node.ssh_user,
+        key_path=node.ssh_key_path,
+        timeout=60
+    )
+    
+    if result.success:
+        log_audit(
+            db, user.id, "snapshot_clone", "snapshot",
+            details=f"Clone {full_name} -> {clone_name} on {node.name}",
+            ip_address=request.client.host if request.client else None
+        )
+        return {"success": True, "message": f"Clone {clone_name} creato da {full_name}"}
+    else:
+        return {"success": False, "message": result.stderr or result.stdout}
+
+
+@router.get("/vm/{node_id}/{vm_id}")
+async def get_vm_snapshots(
+    node_id: int,
+    vm_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Ottiene tutti gli snapshot relativi a una VM.
+    Cerca snapshot di dataset che contengono il VMID nel nome.
+    """
+    node = db.query(Node).filter(Node.id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=404, detail="Nodo non trovato")
+    
+    if not check_node_access(user, node):
+        raise HTTPException(status_code=403, detail="Accesso negato a questo nodo")
+    
+    # Ottieni tutti gli snapshot
+    all_snapshots = await ssh_service.get_snapshots(
+        hostname=node.hostname,
+        port=node.ssh_port,
+        username=node.ssh_user,
+        key_path=node.ssh_key_path
+    )
+    
+    # Filtra per VM ID (cerca vm-XXX nel nome del dataset)
+    vm_pattern = f"vm-{vm_id}-"
+    vm_snapshots = [
+        s for s in all_snapshots 
+        if vm_pattern in s["dataset"] or f"/{vm_id}/" in s["dataset"]
+    ]
+    
+    # Raggruppa per dataset
+    grouped = {}
+    for snap in vm_snapshots:
+        ds = snap["dataset"]
+        if ds not in grouped:
+            grouped[ds] = []
+        grouped[ds].append(snap)
+    
+    return {
+        "vm_id": vm_id,
+        "node_name": node.name,
+        "total_snapshots": len(vm_snapshots),
+        "datasets": grouped
+    }
+
+
 @router.put("/dataset/{dataset_id}/config")
 async def update_dataset_config(
     dataset_id: int,

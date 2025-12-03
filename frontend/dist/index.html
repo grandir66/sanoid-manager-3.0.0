@@ -1253,7 +1253,10 @@
                                     <td>{{ vm.name }}</td>
                                         <td><span class="badge badge-info">{{ vm.type }}</span></td>
                                         <td><span class="badge" :class="vm.status === 'running' ? 'badge-success' : 'badge-warning'">{{ vm.status }}</span></td>
-                                        <td><button class="btn btn-secondary btn-sm" @click="getVmDatasets(vm)">Dataset</button></td>
+                                        <td>
+                                            <button class="btn btn-secondary btn-sm" @click="getVmDatasets(vm)" style="margin-right: 4px;">Dataset</button>
+                                            <button class="btn btn-primary btn-sm" @click="showVmSnapshots(vm)">📷 Snapshot</button>
+                                        </td>
                                 </tr>
                             </tbody>
                         </table>
@@ -1663,6 +1666,80 @@
             </div>
         </div>
         
+        <!-- Modal Snapshot VM -->
+        <div class="modal-overlay" v-if="showVmSnapshotModal" @click.self="showVmSnapshotModal = false">
+            <div class="modal" style="max-width: 900px;">
+                <div class="modal-header">
+                    <h3 class="modal-title">📷 Snapshot VM {{ vmSnapshotData.vmId }} - {{ vmSnapshotData.vmName }}</h3>
+                    <button class="btn btn-icon" @click="showVmSnapshotModal = false">✕</button>
+                </div>
+                
+                <div class="modal-body">
+                    <div v-if="vmSnapshotData.loading" style="text-align: center; padding: 40px;">
+                        <p>Caricamento snapshot...</p>
+                    </div>
+                    
+                    <div v-else-if="vmSnapshotData.total === 0" style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                        <p>Nessuno snapshot trovato per questa VM</p>
+                    </div>
+                    
+                    <div v-else>
+                        <p style="margin-bottom: 16px; color: var(--accent-primary);">
+                            <strong>{{ vmSnapshotData.total }}</strong> snapshot trovati su <strong>{{ vmSnapshotData.nodeName }}</strong>
+                        </p>
+                        
+                        <div v-for="(snaps, dataset) in vmSnapshotData.datasets" :key="dataset" style="margin-bottom: 20px;">
+                            <h4 style="color: var(--accent-secondary); margin-bottom: 8px; font-family: 'JetBrains Mono', monospace; font-size: 0.9rem;">
+                                📁 {{ dataset }}
+                            </h4>
+                            <div class="table-container" style="max-height: 250px; overflow-y: auto;">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Snapshot</th>
+                                            <th>Dimensione</th>
+                                            <th>Data Creazione</th>
+                                            <th>Azioni</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="snap in snaps" :key="snap.full_name">
+                                            <td style="font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; color: var(--accent-primary);">
+                                                {{ snap.snapshot }}
+                                            </td>
+                                            <td>{{ snap.used }}</td>
+                                            <td>{{ snap.creation }}</td>
+                                            <td>
+                                                <button class="btn btn-danger btn-sm" @click="rollbackToSnapshot(snap)" :disabled="loading" title="Rollback (distruttivo!)">
+                                                    🔄 Rollback
+                                                </button>
+                                                <button class="btn btn-secondary btn-sm" @click="cloneSnapshot(snap)" :disabled="loading" title="Crea clone" style="margin-left: 4px;">
+                                                    📋 Clone
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        
+                        <div style="margin-top: 20px; padding: 12px; background: var(--bg-tertiary); border-radius: 8px; font-size: 13px;">
+                            <strong style="color: var(--accent-warning);">⚠️ Attenzione:</strong>
+                            <ul style="margin: 8px 0 0 20px; color: var(--text-secondary);">
+                                <li><strong>Rollback</strong>: Ripristina il dataset allo stato dello snapshot. <span style="color: var(--accent-danger);">DISTRUTTIVO - i dati successivi verranno persi!</span></li>
+                                <li><strong>Clone</strong>: Crea una copia scrivibile del dataset. Non distruttivo.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @click="loadVmSnapshots()" :disabled="loading">🔄 Aggiorna</button>
+                    <button class="btn btn-primary" @click="showVmSnapshotModal = false">Chiudi</button>
+                </div>
+            </div>
+        </div>
+        
         <!-- Modals... (keeping existing but simplified) -->
         <div class="modal-overlay" v-if="isAuthenticated && showNodeModal" @click.self="showNodeModal = false">
             <div class="modal">
@@ -2053,6 +2130,18 @@
                 const distributePassword = ref('');
                 const selectedNodesForDistribute = ref([]);
                 const distributeResults = ref([]);
+                
+                // VM Snapshot Management
+                const showVmSnapshotModal = ref(false);
+                const vmSnapshotData = ref({
+                    vmId: null,
+                    vmName: '',
+                    nodeId: null,
+                    nodeName: '',
+                    total: 0,
+                    datasets: {},
+                    loading: false
+                });
                 
                 // Snapshot Modal
                 const showSnapshotModal = ref(false);
@@ -2891,6 +2980,74 @@
                     loading.value = false;
                 };
                 
+                // VM Snapshot Management
+                const showVmSnapshots = (vm) => {
+                    vmSnapshotData.value = {
+                        vmId: vm.vmid,
+                        vmName: vm.name,
+                        nodeId: selectedVmNodeId.value,
+                        nodeName: nodes.value.find(n => n.id == selectedVmNodeId.value)?.name || '',
+                        total: 0,
+                        datasets: {},
+                        loading: true
+                    };
+                    showVmSnapshotModal.value = true;
+                    loadVmSnapshots();
+                };
+                
+                const loadVmSnapshots = async () => {
+                    vmSnapshotData.value.loading = true;
+                    try {
+                        const res = await axios.get(`${API}/snapshots/vm/${vmSnapshotData.value.nodeId}/${vmSnapshotData.value.vmId}`);
+                        vmSnapshotData.value.total = res.data.total_snapshots;
+                        vmSnapshotData.value.datasets = res.data.datasets;
+                        vmSnapshotData.value.nodeName = res.data.node_name;
+                    } catch (e) {
+                        showToast('Errore caricamento snapshot', 'error');
+                    }
+                    vmSnapshotData.value.loading = false;
+                };
+                
+                const rollbackToSnapshot = async (snap) => {
+                    const msg = `⚠️ ATTENZIONE: Stai per eseguire un ROLLBACK!\n\nDataset: ${snap.dataset}\nSnapshot: ${snap.snapshot}\n\nTutti i dati successivi allo snapshot verranno PERSI!\n\nContinuare?`;
+                    if (!confirm(msg)) return;
+                    
+                    // Doppia conferma per operazioni distruttive
+                    if (!confirm('Sei ASSOLUTAMENTE sicuro? Questa operazione è IRREVERSIBILE!')) return;
+                    
+                    loading.value = true;
+                    try {
+                        const res = await axios.post(`${API}/snapshots/node/${vmSnapshotData.value.nodeId}/rollback?full_name=${encodeURIComponent(snap.full_name)}&force=true`);
+                        if (res.data.success) {
+                            showToast(`Rollback completato a ${snap.snapshot}`, 'success');
+                        } else {
+                            showToast(`Errore: ${res.data.message}`, 'error');
+                        }
+                    } catch (e) {
+                        showToast(e.response?.data?.detail || 'Errore rollback', 'error');
+                    }
+                    loading.value = false;
+                };
+                
+                const cloneSnapshot = async (snap) => {
+                    const defaultName = `${snap.dataset}-clone-${Date.now()}`;
+                    const cloneName = prompt(`Nome del clone:\n(Percorso completo del nuovo dataset)`, defaultName);
+                    if (!cloneName) return;
+                    
+                    loading.value = true;
+                    try {
+                        const res = await axios.post(`${API}/snapshots/node/${vmSnapshotData.value.nodeId}/clone?full_name=${encodeURIComponent(snap.full_name)}&clone_name=${encodeURIComponent(cloneName)}`);
+                        if (res.data.success) {
+                            showToast(`Clone creato: ${cloneName}`, 'success');
+                        } else {
+                            showToast(`Errore: ${res.data.message}`, 'error');
+                        }
+                    } catch (e) {
+                        showToast(e.response?.data?.detail || 'Errore clone', 'error');
+                    }
+                    loading.value = false;
+                };
+                
                 // Init
                 onMounted(async () => {
                     if (checkAuth()) {
@@ -2913,6 +3070,8 @@
                     showNodeModal, showSyncJobModal, editingSyncJobId, showUserModal, editingUser,
                     // SSH Keys
                     sshKeyInfo, sshTestResults, showDistributeModal, distributePassword, selectedNodesForDistribute, distributeResults,
+                    // VM Snapshots
+                    showVmSnapshotModal, vmSnapshotData,
                     // Snapshot Modal
                     showSnapshotModal, snapshotTab, snapshotModalData,
                     newNode, newSyncJob, newUser,
@@ -2935,7 +3094,9 @@
                     // SSH Keys functions
                     loadSSHKeyInfo, generateSSHKey, regenerateSSHKey, copyPublicKey,
                     testAllSSHConnections, testSingleSSH, distributeSingleKey, distributeKeyToSelected,
-                    setupMeshSSH
+                    setupMeshSSH,
+                    // VM Snapshot functions
+                    showVmSnapshots, loadVmSnapshots, rollbackToSnapshot, cloneSnapshot
                 };
             }
         }).mount('#app');
