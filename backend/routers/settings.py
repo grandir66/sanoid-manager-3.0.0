@@ -122,20 +122,20 @@ async def list_settings(
     return {s.key: {"value": s.value, "description": s.description} for s in settings}
 
 
-@router.get("/{key}")
+@router.get("/legacy/{key}")
 async def get_setting(
     key: str,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Ottiene un'impostazione specifica"""
+    """Ottiene un'impostazione specifica (legacy)"""
     setting = db.query(Settings).filter(Settings.key == key).first()
     if not setting:
         raise HTTPException(status_code=404, detail="Impostazione non trovata")
     return {"key": setting.key, "value": setting.value, "description": setting.description}
 
 
-@router.put("/{key}")
+@router.put("/legacy/{key}")
 async def update_setting(
     key: str,
     update: SettingUpdate,
@@ -143,7 +143,7 @@ async def update_setting(
     user: User = Depends(require_admin),
     db: Session = Depends(get_db)
 ):
-    """Aggiorna un'impostazione"""
+    """Aggiorna un'impostazione (legacy)"""
     setting = db.query(Settings).filter(Settings.key == key).first()
     
     if setting:
@@ -234,7 +234,7 @@ async def update_system_config(
         config.updated_at = datetime.utcnow()
     else:
         config = SystemConfig(
-            key=key,
+                key=key,
             value=update.value,
             description=update.description
         )
