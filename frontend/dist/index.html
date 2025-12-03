@@ -1738,16 +1738,7 @@
                     return syncJobs.value.filter(j => !j.vm_group_id);
                 });
                 
-                // Computed per pool destinazione e suggerimento (legacy)
-                const destPools = computed(() => {
-                    const pools = new Set();
-                    destDatasets.value.forEach(ds => {
-                        const root = ds.name.split('/')[0];
-                        if (root) pools.add(root);
-                    });
-                    return Array.from(pools);
-                });
-                
+                // Computed per suggerimento dataset destinazione
                 const suggestedDestDataset = computed(() => {
                     if (!newSyncJob.value.source_dataset || !destRootPool.value) return '';
                     // Prendi il nome base del dataset sorgente (ultima parte del path)
@@ -2018,10 +2009,17 @@
                 };
                 
                 const loadDestDatasets = async () => {
-                    if (!newSyncJob.value.dest_node_id) { destDatasets.value = []; return; }
+                    if (!newSyncJob.value.dest_node_id) { destDatasets.value = []; destPools.value = []; return; }
                     try { 
                         destDatasets.value = (await axios.get(`${API}/nodes/${newSyncJob.value.dest_node_id}/datasets`)).data;
-                    } catch (e) { destDatasets.value = []; }
+                        // Estrai i pool dai dataset
+                        const pools = new Set();
+                        destDatasets.value.forEach(ds => {
+                            const root = ds.name.split('/')[0];
+                            if (root) pools.add(root);
+                        });
+                        destPools.value = Array.from(pools);
+                    } catch (e) { destDatasets.value = []; destPools.value = []; }
                 };
                 
                 const onDestNodeChange = async () => {
