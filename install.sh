@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Sanoid Manager v3.0.3 - Script di Installazione
+# Sanoid Manager v3.0.4 - Script di Installazione
 # Gestione centralizzata Sanoid/Syncoid per Proxmox VE
 # Con autenticazione integrata Proxmox
 #
@@ -8,7 +8,7 @@
 set -e
 
 # ============== CONFIGURAZIONE ==============
-VERSION="3.0.3"
+VERSION="3.0.4"
 GITHUB_REPO="grandir66/sanoid-manager-3.0.0"
 INSTALL_DIR="/opt/sanoid-manager"
 DATA_DIR="/var/lib/sanoid-manager"
@@ -676,10 +676,73 @@ SSH_CONFIG
 
 # ============== AVVIO SERVIZIO ==============
 
+migrate_database() {
+    log_step "Migrazione database"
+    
+    local DB_FILE="$DATA_DIR/sanoid-manager.db"
+    
+    if [[ ! -f "$DB_FILE" ]]; then
+        log_info "Database non esistente, verrà creato all'avvio"
+        return 0
+    fi
+    
+    log_info "Verifica e aggiornamento schema database..."
+    
+    # Lista delle migrazioni da applicare
+    # Ogni migrazione controlla se la colonna esiste prima di aggiungerla
+    
+    # Migrazione: notification_config.smtp_to
+    if ! sqlite3 "$DB_FILE" "PRAGMA table_info(notification_config);" | grep -q "smtp_to"; then
+        log_info "Aggiunta colonna smtp_to..."
+        sqlite3 "$DB_FILE" "ALTER TABLE notification_config ADD COLUMN smtp_to VARCHAR(500);" 2>/dev/null || true
+    fi
+    
+    # Migrazione: notification_config.smtp_subject_prefix
+    if ! sqlite3 "$DB_FILE" "PRAGMA table_info(notification_config);" | grep -q "smtp_subject_prefix"; then
+        log_info "Aggiunta colonna smtp_subject_prefix..."
+        sqlite3 "$DB_FILE" "ALTER TABLE notification_config ADD COLUMN smtp_subject_prefix VARCHAR(100) DEFAULT '[Sanoid Manager]';" 2>/dev/null || true
+    fi
+    
+    # Migrazione: sync_jobs.dest_vm_id
+    if ! sqlite3 "$DB_FILE" "PRAGMA table_info(sync_jobs);" | grep -q "dest_vm_id"; then
+        log_info "Aggiunta colonna dest_vm_id..."
+        sqlite3 "$DB_FILE" "ALTER TABLE sync_jobs ADD COLUMN dest_vm_id INTEGER;" 2>/dev/null || true
+    fi
+    
+    # Migrazione: sync_jobs.vm_group_id
+    if ! sqlite3 "$DB_FILE" "PRAGMA table_info(sync_jobs);" | grep -q "vm_group_id"; then
+        log_info "Aggiunta colonna vm_group_id..."
+        sqlite3 "$DB_FILE" "ALTER TABLE sync_jobs ADD COLUMN vm_group_id VARCHAR(50);" 2>/dev/null || true
+    fi
+    
+    # Migrazione: sync_jobs.disk_name
+    if ! sqlite3 "$DB_FILE" "PRAGMA table_info(sync_jobs);" | grep -q "disk_name"; then
+        log_info "Aggiunta colonna disk_name..."
+        sqlite3 "$DB_FILE" "ALTER TABLE sync_jobs ADD COLUMN disk_name VARCHAR(50);" 2>/dev/null || true
+    fi
+    
+    # Migrazione: sync_jobs.source_storage
+    if ! sqlite3 "$DB_FILE" "PRAGMA table_info(sync_jobs);" | grep -q "source_storage"; then
+        log_info "Aggiunta colonna source_storage..."
+        sqlite3 "$DB_FILE" "ALTER TABLE sync_jobs ADD COLUMN source_storage VARCHAR(100);" 2>/dev/null || true
+    fi
+    
+    # Migrazione: sync_jobs.dest_storage
+    if ! sqlite3 "$DB_FILE" "PRAGMA table_info(sync_jobs);" | grep -q "dest_storage"; then
+        log_info "Aggiunta colonna dest_storage..."
+        sqlite3 "$DB_FILE" "ALTER TABLE sync_jobs ADD COLUMN dest_storage VARCHAR(100);" 2>/dev/null || true
+    fi
+    
+    log_success "Migrazione database completata"
+}
+
 start_service() {
     log_step "Avvio servizio"
     
     systemctl enable sanoid-manager
+    
+    # Esegui migrazione database prima dell'avvio
+    migrate_database
     
     if [[ "$UPGRADE_MODE" == true ]]; then
         log_info "Riavvio servizio..."

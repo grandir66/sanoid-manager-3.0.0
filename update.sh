@@ -168,6 +168,32 @@ install_update() {
     python -c "from database import Base, engine; Base.metadata.create_all(bind=engine)" 2>/dev/null || true
     deactivate
     
+    # Migrazioni SQLite specifiche (ALTER TABLE per nuove colonne)
+    local DB_FILE="/var/lib/sanoid-manager/sanoid-manager.db"
+    if [[ -f "$DB_FILE" ]]; then
+        log_info "Applicazione migrazioni database..."
+        
+        # notification_config
+        sqlite3 "$DB_FILE" "PRAGMA table_info(notification_config);" | grep -q "smtp_to" || \
+            sqlite3 "$DB_FILE" "ALTER TABLE notification_config ADD COLUMN smtp_to VARCHAR(500);" 2>/dev/null
+        sqlite3 "$DB_FILE" "PRAGMA table_info(notification_config);" | grep -q "smtp_subject_prefix" || \
+            sqlite3 "$DB_FILE" "ALTER TABLE notification_config ADD COLUMN smtp_subject_prefix VARCHAR(100) DEFAULT '[Sanoid Manager]';" 2>/dev/null
+        
+        # sync_jobs
+        sqlite3 "$DB_FILE" "PRAGMA table_info(sync_jobs);" | grep -q "dest_vm_id" || \
+            sqlite3 "$DB_FILE" "ALTER TABLE sync_jobs ADD COLUMN dest_vm_id INTEGER;" 2>/dev/null
+        sqlite3 "$DB_FILE" "PRAGMA table_info(sync_jobs);" | grep -q "vm_group_id" || \
+            sqlite3 "$DB_FILE" "ALTER TABLE sync_jobs ADD COLUMN vm_group_id VARCHAR(50);" 2>/dev/null
+        sqlite3 "$DB_FILE" "PRAGMA table_info(sync_jobs);" | grep -q "disk_name" || \
+            sqlite3 "$DB_FILE" "ALTER TABLE sync_jobs ADD COLUMN disk_name VARCHAR(50);" 2>/dev/null
+        sqlite3 "$DB_FILE" "PRAGMA table_info(sync_jobs);" | grep -q "source_storage" || \
+            sqlite3 "$DB_FILE" "ALTER TABLE sync_jobs ADD COLUMN source_storage VARCHAR(100);" 2>/dev/null
+        sqlite3 "$DB_FILE" "PRAGMA table_info(sync_jobs);" | grep -q "dest_storage" || \
+            sqlite3 "$DB_FILE" "ALTER TABLE sync_jobs ADD COLUMN dest_storage VARCHAR(100);" 2>/dev/null
+        
+        log_success "Migrazioni applicate"
+    fi
+    
     # Start servizio
     log_info "Avvio servizio..."
     systemctl start "$SERVICE_NAME"
