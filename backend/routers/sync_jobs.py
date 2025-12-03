@@ -17,6 +17,63 @@ from routers.auth import get_current_user, require_operator, require_admin, log_
 router = APIRouter()
 
 
+# ============== Helper Function per notifiche email ==============
+
+async def send_job_email_notification(
+    db_session,
+    job_name: str,
+    status: str,
+    source: str,
+    destination: str,
+    duration: int = None,
+    error: str = None,
+    details: str = None
+):
+    """Invia notifica email per un job di replica se configurato."""
+    from database import NotificationConfig
+    from services.email_service import email_service
+    
+    # Carica configurazione notifiche
+    config = db_session.query(NotificationConfig).first()
+    if not config or not config.smtp_enabled:
+        return
+    
+    # Verifica se notificare per questo status
+    if status == "success" and not config.notify_on_success:
+        return
+    if status == "failed" and not config.notify_on_failure:
+        return
+    if status == "warning" and not config.notify_on_warning:
+        return
+    
+    # Verifica configurazione SMTP
+    if not config.smtp_host or not config.smtp_to:
+        return
+    
+    # Configura email service
+    email_service.configure(
+        host=config.smtp_host,
+        port=config.smtp_port or 587,
+        user=config.smtp_user,
+        password=config.smtp_password,
+        from_addr=config.smtp_from,
+        to_addrs=config.smtp_to,
+        subject_prefix=config.smtp_subject_prefix or "[Sanoid Manager]",
+        use_tls=config.smtp_tls
+    )
+    
+    # Invia notifica
+    email_service.send_job_notification(
+        job_name=job_name,
+        status=status,
+        source=source,
+        destination=destination,
+        duration=duration,
+        error=error,
+        details=details[:1000] if details else None  # Limita dettagli
+    )
+
+
 # ============== Helper Function per esecuzione job ==============
 
 async def execute_sync_job_task(job_id: int, triggered_by_user_id: int = None):
@@ -181,6 +238,23 @@ async def execute_sync_job_task(job_id: int, triggered_by_user_id: int = None):
         log_entry.completed_at = datetime.utcnow()
         
         db_session.commit()
+        
+        # Invia notifica email se configurata
+        try:
+            await send_job_email_notification(
+                db_session=db_session,
+                job_name=job.name,
+                status="success" if result["success"] else "failed",
+                source=f"{source_node.name}:{job.source_dataset}",
+                destination=f"{dest_node.name}:{job.dest_dataset}",
+                duration=result["duration"],
+                error=result.get("error") if not result["success"] else None,
+                details=result.get("output")
+            )
+        except Exception as email_err:
+            # Non bloccare se l'email fallisce
+            import logging
+            logging.getLogger(__name__).warning(f"Errore invio notifica email: {email_err}")
         
     except Exception as e:
         if log_entry:
