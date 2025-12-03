@@ -1149,6 +1149,7 @@
                                 </div>
                                 <div style="display: flex; gap: 8px;">
                                     <button class="btn btn-primary btn-sm" @click="runVMGroup(group.vm_group_id)" :disabled="loading" title="Esegui tutti">▶ Run All</button>
+                                    <button class="btn btn-secondary btn-sm" @click="showGroupSnapshots(group)" :disabled="loading" title="Vedi Snapshot">📷 Snapshot</button>
                                     <button class="btn btn-info btn-sm" @click="registerVMGroup(group)" :disabled="loading" v-if="group.register_vm" title="Registra VM">📋 Registra</button>
                                     <button class="btn btn-danger btn-sm" @click="deleteVMGroup(group.vm_group_id)" :disabled="loading" title="Elimina gruppo">🗑️</button>
                                 </div>
@@ -1609,6 +1610,83 @@
             </div>
         </div>
         
+        <!-- Modal Snapshot -->
+        <div class="modal-overlay" v-if="isAuthenticated && showSnapshotModal" @click.self="showSnapshotModal = false">
+            <div class="modal" style="max-width: 900px;">
+                <div class="modal-header">
+                    <h3 class="modal-title">📷 Snapshot - VM {{ snapshotModalData.vmId }}</h3>
+                    <button class="btn btn-icon" @click="showSnapshotModal = false">✕</button>
+                </div>
+                <div class="modal-body">
+                    <!-- Tab per sorgente/destinazione -->
+                    <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                        <button class="btn" :class="snapshotTab === 'source' ? 'btn-primary' : 'btn-secondary'" @click="snapshotTab = 'source'">
+                            📤 Sorgente ({{ snapshotModalData.sourceSnapshots.length }})
+                        </button>
+                        <button class="btn" :class="snapshotTab === 'dest' ? 'btn-primary' : 'btn-secondary'" @click="snapshotTab = 'dest'">
+                            📥 Destinazione ({{ snapshotModalData.destSnapshots.length }})
+                        </button>
+                    </div>
+                    
+                    <!-- Snapshot Sorgente -->
+                    <div v-if="snapshotTab === 'source'">
+                        <h4 style="color: var(--accent-primary); margin-bottom: 12px;">
+                            📤 {{ snapshotModalData.sourceNode }} - Snapshot Sorgente
+                        </h4>
+                        <div v-if="snapshotModalData.loadingSource" style="text-align: center; padding: 20px;">
+                            ⏳ Caricamento...
+                        </div>
+                        <div v-else-if="snapshotModalData.sourceSnapshots.length === 0" style="text-align: center; padding: 20px; color: var(--text-secondary);">
+                            Nessuno snapshot trovato
+                        </div>
+                        <div v-else class="table-container" style="max-height: 400px; overflow-y: auto;">
+                            <table>
+                                <thead><tr><th>Dataset</th><th>Snapshot</th><th>Dimensione</th><th>Data Creazione</th></tr></thead>
+                                <tbody>
+                                    <tr v-for="snap in snapshotModalData.sourceSnapshots" :key="snap.full_name">
+                                        <td style="font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;">{{ snap.dataset.split('/').pop() }}</td>
+                                        <td style="font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: var(--accent-primary);">{{ snap.snapshot }}</td>
+                                        <td>{{ snap.used }}</td>
+                                        <td>{{ snap.creation }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <!-- Snapshot Destinazione -->
+                    <div v-if="snapshotTab === 'dest'">
+                        <h4 style="color: var(--accent-secondary); margin-bottom: 12px;">
+                            📥 {{ snapshotModalData.destNode }} - Snapshot Destinazione
+                        </h4>
+                        <div v-if="snapshotModalData.loadingDest" style="text-align: center; padding: 20px;">
+                            ⏳ Caricamento...
+                        </div>
+                        <div v-else-if="snapshotModalData.destSnapshots.length === 0" style="text-align: center; padding: 20px; color: var(--text-secondary);">
+                            Nessuno snapshot trovato (la replica potrebbe non essere ancora stata eseguita)
+                        </div>
+                        <div v-else class="table-container" style="max-height: 400px; overflow-y: auto;">
+                            <table>
+                                <thead><tr><th>Dataset</th><th>Snapshot</th><th>Dimensione</th><th>Data Creazione</th></tr></thead>
+                                <tbody>
+                                    <tr v-for="snap in snapshotModalData.destSnapshots" :key="snap.full_name">
+                                        <td style="font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;">{{ snap.dataset.split('/').pop() }}</td>
+                                        <td style="font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: var(--accent-secondary);">{{ snap.snapshot }}</td>
+                                        <td>{{ snap.used }}</td>
+                                        <td>{{ snap.creation }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @click="showSnapshotModal = false">Chiudi</button>
+                    <button class="btn btn-primary" @click="refreshSnapshots" :disabled="loading">🔄 Aggiorna</button>
+                </div>
+            </div>
+        </div>
+        
         <!-- Toast -->
         <div class="toast-container">
             <div v-for="toast in toasts" :key="toast.id" class="toast" :class="'toast-' + toast.type">{{ toast.message }}</div>
@@ -1683,6 +1761,23 @@
                 const editingUser = ref(null);
                 const selectedLog = ref(null);
                 
+                // Snapshot Modal
+                const showSnapshotModal = ref(false);
+                const snapshotTab = ref('source');
+                const snapshotModalData = ref({
+                    vmId: null,
+                    sourceNodeId: null,
+                    destNodeId: null,
+                    sourceNode: '',
+                    destNode: '',
+                    sourceDatasets: [],
+                    destDatasets: [],
+                    sourceSnapshots: [],
+                    destSnapshots: [],
+                    loadingSource: false,
+                    loadingDest: false
+                });
+                
                 // Forms
                 const newNode = ref({ name: '', hostname: '', ssh_port: 22, ssh_user: 'root', ssh_key_path: '/root/.ssh/id_rsa' });
                 const newSyncJob = ref({ name: '', source_node_id: '', source_dataset: '', dest_node_id: '', dest_dataset: '', schedule: '', compress: 'lz4', recursive: false, register_vm: false, vm_id: '', dest_vm_id: '', vm_type: 'qemu' });
@@ -1722,6 +1817,8 @@
                                 vm_id: job.vm_id,
                                 vm_name: job.vm_name,
                                 dest_vm_id: job.dest_vm_id,
+                                source_node_id: job.source_node_id,
+                                dest_node_id: job.dest_node_id,
                                 source_node: job.source_node_name,
                                 dest_node: job.dest_node_name,
                                 schedule: job.schedule,
@@ -2001,6 +2098,83 @@
                     loading.value = false;
                 };
                 
+                // ========== Snapshot Modal Functions ==========
+                const showGroupSnapshots = async (group) => {
+                    snapshotModalData.value = {
+                        vmId: group.vm_id,
+                        sourceNodeId: group.source_node_id,
+                        destNodeId: group.dest_node_id,
+                        sourceNode: group.source_node,
+                        destNode: group.dest_node,
+                        sourceDatasets: group.jobs.map(j => j.source_dataset),
+                        destDatasets: group.jobs.map(j => j.dest_dataset),
+                        sourceSnapshots: [],
+                        destSnapshots: [],
+                        loadingSource: true,
+                        loadingDest: true
+                    };
+                    snapshotTab.value = 'source';
+                    showSnapshotModal.value = true;
+                    
+                    // Carica snapshot sorgente
+                    try {
+                        const sourcePromises = snapshotModalData.value.sourceDatasets.map(ds => 
+                            axios.get(`${API}/snapshots/node/${group.source_node_id}?dataset=${encodeURIComponent(ds)}`)
+                        );
+                        const sourceResults = await Promise.all(sourcePromises);
+                        snapshotModalData.value.sourceSnapshots = sourceResults.flatMap(r => r.data);
+                    } catch (e) {
+                        console.error('Errore caricamento snapshot sorgente:', e);
+                    }
+                    snapshotModalData.value.loadingSource = false;
+                    
+                    // Carica snapshot destinazione
+                    try {
+                        const destPromises = snapshotModalData.value.destDatasets.map(ds => 
+                            axios.get(`${API}/snapshots/node/${group.dest_node_id}?dataset=${encodeURIComponent(ds)}`)
+                                .catch(() => ({ data: [] })) // Dataset potrebbe non esistere ancora
+                        );
+                        const destResults = await Promise.all(destPromises);
+                        snapshotModalData.value.destSnapshots = destResults.flatMap(r => r.data);
+                    } catch (e) {
+                        console.error('Errore caricamento snapshot destinazione:', e);
+                    }
+                    snapshotModalData.value.loadingDest = false;
+                };
+                
+                const refreshSnapshots = async () => {
+                    if (!snapshotModalData.value.vmId) return;
+                    snapshotModalData.value.loadingSource = true;
+                    snapshotModalData.value.loadingDest = true;
+                    
+                    // Ri-carica snapshot sorgente
+                    try {
+                        const sourcePromises = snapshotModalData.value.sourceDatasets.map(ds => 
+                            axios.get(`${API}/snapshots/node/${snapshotModalData.value.sourceNodeId}?dataset=${encodeURIComponent(ds)}`)
+                        );
+                        const sourceResults = await Promise.all(sourcePromises);
+                        snapshotModalData.value.sourceSnapshots = sourceResults.flatMap(r => r.data);
+                    } catch (e) {
+                        console.error('Errore aggiornamento snapshot sorgente:', e);
+                    }
+                    snapshotModalData.value.loadingSource = false;
+                    
+                    // Ri-carica snapshot destinazione
+                    try {
+                        const destPromises = snapshotModalData.value.destDatasets.map(ds => 
+                            axios.get(`${API}/snapshots/node/${snapshotModalData.value.destNodeId}?dataset=${encodeURIComponent(ds)}`)
+                                .catch(() => ({ data: [] }))
+                        );
+                        const destResults = await Promise.all(destPromises);
+                        snapshotModalData.value.destSnapshots = destResults.flatMap(r => r.data);
+                    } catch (e) {
+                        console.error('Errore aggiornamento snapshot destinazione:', e);
+                    }
+                    snapshotModalData.value.loadingDest = false;
+                    
+                    showToast('Snapshot aggiornati', 'success');
+                };
+                
                 const loadSourceDatasets = async () => {
                     if (!newSyncJob.value.source_node_id) { sourceDatasets.value = []; return; }
                     try { 
@@ -2251,6 +2425,8 @@
                     sourceVMs, vmReplicaWizard, vmGroups, singleJobs,
                     settings, authSettings, notifSettings,
                     showNodeModal, showSyncJobModal, editingSyncJobId, showUserModal, editingUser,
+                    // Snapshot Modal
+                    showSnapshotModal, snapshotTab, snapshotModalData,
                     newNode, newSyncJob, newUser,
                     isAdmin, canEdit,
                     showToast, formatDate, getStatusClass,
@@ -2260,6 +2436,8 @@
                     // VM Replica functions
                     loadSourceVMs, loadDestPools, selectVMForReplica, cancelVMReplica, createVMReplica,
                     runVMGroup, deleteVMGroup, registerVMGroup,
+                    // Snapshot functions
+                    showGroupSnapshots, refreshSnapshots,
                     createNode, testNode, installSanoid, deleteNode, refreshNodeDatasets,
                     updateDatasetConfig, applySanoidConfig,
                     createSyncJob, runSyncJob, toggleSyncJob, deleteSyncJob, editSyncJob, registerJobVM,
