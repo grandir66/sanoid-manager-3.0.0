@@ -929,7 +929,7 @@
                     <div class="card-header">
                         <h3 class="card-title">Dataset ZFS</h3>
                         <div>
-                                <button class="btn btn-secondary btn-sm" @click="loadNodeSnapshots" :disabled="loading">Carica Snapshot</button>
+                                <button class="btn btn-secondary btn-sm" @click="loadNodeSnapshots" :disabled="loading">📷 Carica Snapshot</button>
                                 <button class="btn btn-primary btn-sm" @click="applySanoidConfig" :disabled="loading" v-if="canEdit">Applica Config</button>
                         </div>
                     </div>
@@ -956,6 +956,31 @@
                             </tbody>
                         </table>
                     </div>
+                </div>
+                
+                <!-- Snapshot del Nodo -->
+                <div class="card" v-if="selectedNodeId && snapshots.length > 0" style="margin-top: 20px;">
+                    <div class="card-header">
+                        <h3 class="card-title">📷 Snapshot ({{ snapshots.length }})</h3>
+                        <button class="btn btn-secondary btn-sm" @click="loadNodeSnapshots" :disabled="loading">🔄 Aggiorna</button>
+                    </div>
+                    <div class="table-container" style="max-height: 400px; overflow-y: auto;">
+                        <table>
+                            <thead><tr><th>Dataset</th><th>Snapshot</th><th>Dimensione</th><th>Data Creazione</th></tr></thead>
+                            <tbody>
+                                <tr v-for="snap in snapshots" :key="snap.full_name">
+                                    <td style="font-family: 'JetBrains Mono', monospace; font-size: 0.85rem;">{{ snap.dataset }}</td>
+                                    <td style="font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; color: var(--accent-primary);">{{ snap.snapshot }}</td>
+                                    <td>{{ snap.used }}</td>
+                                    <td>{{ snap.creation }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <div class="card" v-if="selectedNodeId && snapshots.length === 0 && datasets.length > 0" style="margin-top: 20px; text-align: center; padding: 30px; color: var(--text-secondary);">
+                    <p>Clicca "📷 Carica Snapshot" per visualizzare gli snapshot di questo nodo</p>
                 </div>
             </div>
             
