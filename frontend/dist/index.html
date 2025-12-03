@@ -1,0 +1,2277 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sanoid Manager</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0e14;
+            --bg-secondary: #0f1419;
+            --bg-tertiary: #151b23;
+            --bg-card: #1a2129;
+            --accent-primary: #00ff9d;
+            --accent-secondary: #00d4ff;
+            --accent-warning: #ffb300;
+            --accent-danger: #ff4757;
+            --text-primary: #e6e8eb;
+            --text-secondary: #8b949e;
+            --border-color: #2d3741;
+            --gradient-glow: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+        }
+        
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Space Grotesk', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+        
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: 
+                radial-gradient(ellipse at 20% 20%, rgba(0, 255, 157, 0.03) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 80%, rgba(0, 212, 255, 0.03) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+        
+        #app { position: relative; z-index: 1; display: flex; min-height: 100vh; }
+        
+        /* Login Page */
+        .login-page {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            width: 100%;
+            background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+        }
+        
+        .login-container {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 48px;
+            width: 100%;
+            max-width: 420px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+        
+        .login-logo {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        
+        .login-logo h1 {
+            font-size: 2rem;
+            background: var(--gradient-glow);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-top: 16px;
+        }
+        
+        .login-logo-icon {
+            width: 64px;
+            height: 64px;
+            background: var(--gradient-glow);
+            border-radius: 16px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto;
+        }
+        
+        .login-logo-icon svg {
+            width: 36px;
+            height: 36px;
+            stroke: var(--bg-primary);
+        }
+        
+        .login-error {
+            background: rgba(255, 71, 87, 0.1);
+            border: 1px solid var(--accent-danger);
+            color: var(--accent-danger);
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 0.875rem;
+        }
+        
+        /* Sidebar */
+        .sidebar {
+            width: 260px;
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            height: 100vh;
+            z-index: 100;
+        }
+        
+        .logo {
+            padding: 24px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .logo h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: var(--gradient-glow);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .logo-icon {
+            width: 32px;
+            height: 32px;
+            background: var(--gradient-glow);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .logo-icon svg { width: 20px; height: 20px; }
+        
+        .nav-menu {
+            flex: 1;
+            padding: 16px 12px;
+            overflow-y: auto;
+        }
+        
+        .nav-section {
+            margin-bottom: 24px;
+        }
+        
+        .nav-section-title {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-secondary);
+            padding: 0 16px;
+            margin-bottom: 8px;
+        }
+        
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+            font-weight: 500;
+        }
+        
+        .nav-item:hover {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+        
+        .nav-item.active {
+            background: linear-gradient(135deg, rgba(0, 255, 157, 0.1), rgba(0, 212, 255, 0.1));
+            color: var(--accent-primary);
+            border: 1px solid rgba(0, 255, 157, 0.2);
+        }
+        
+        .nav-item svg { width: 20px; height: 20px; flex-shrink: 0; }
+        
+        .user-menu {
+            padding: 16px;
+            border-top: 1px solid var(--border-color);
+        }
+        
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            background: var(--bg-tertiary);
+            border-radius: 10px;
+            margin-bottom: 12px;
+        }
+        
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            background: var(--gradient-glow);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            color: var(--bg-primary);
+        }
+        
+        .user-details { flex: 1; }
+        .user-name { font-weight: 600; font-size: 0.875rem; }
+        .user-role { font-size: 0.75rem; color: var(--text-secondary); text-transform: capitalize; }
+        
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            margin-left: 260px;
+            padding: 24px;
+            min-height: 100vh;
+        }
+        
+        .page-header { margin-bottom: 32px; }
+        .page-title { font-size: 2rem; font-weight: 700; margin-bottom: 8px; }
+        .page-subtitle { color: var(--text-secondary); }
+        
+        /* Cards */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+        
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .card-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 32px;
+        }
+        
+        .stat-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; width: 4px; height: 100%;
+            background: var(--gradient-glow);
+        }
+        
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        
+        .stat-label {
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            margin-top: 4px;
+        }
+        
+        /* Tables */
+        .table-container { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; }
+        
+        th {
+            text-align: left;
+            padding: 12px 16px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        td {
+            padding: 16px;
+            border-bottom: 1px solid var(--border-color);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.875rem;
+        }
+        
+        tr:hover { background: rgba(255, 255, 255, 0.02); }
+        
+        /* Buttons */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 500;
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: none;
+        }
+        
+        .btn-primary {
+            background: var(--gradient-glow);
+            color: var(--bg-primary);
+        }
+        
+        .btn-primary:hover {
+            box-shadow: 0 0 20px rgba(0, 255, 157, 0.3);
+            transform: translateY(-1px);
+        }
+        
+        .btn-secondary {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+        
+        .btn-secondary:hover { border-color: var(--accent-primary); }
+        
+        .btn-danger {
+            background: rgba(255, 71, 87, 0.1);
+            color: var(--accent-danger);
+            border: 1px solid var(--accent-danger);
+        }
+        
+        .btn-sm { padding: 6px 12px; font-size: 0.75rem; }
+        .btn-icon { padding: 8px; border-radius: 6px; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        
+        /* Status Badges */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+        
+        .badge-success { background: rgba(0, 255, 157, 0.1); color: var(--accent-primary); }
+        .badge-warning { background: rgba(255, 179, 0, 0.1); color: var(--accent-warning); }
+        .badge-danger { background: rgba(255, 71, 87, 0.1); color: var(--accent-danger); }
+        .badge-info { background: rgba(0, 212, 255, 0.1); color: var(--accent-secondary); }
+        
+        .status-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+        
+        /* Forms */
+        .form-group { margin-bottom: 20px; }
+        .form-label { display: block; margin-bottom: 8px; font-weight: 500; font-size: 0.875rem; }
+        
+        .form-input {
+            width: 100%;
+            padding: 12px 16px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.875rem;
+            transition: all 0.2s ease;
+        }
+        
+        .form-input:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 0 3px rgba(0, 255, 157, 0.1);
+        }
+        
+        .form-input::placeholder { color: var(--text-secondary); }
+        select.form-input { cursor: pointer; }
+        
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            backdrop-filter: blur(4px);
+        }
+        
+        .modal {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            width: 100%;
+            max-width: 500px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        
+        .modal-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .modal-title { font-size: 1.25rem; font-weight: 600; }
+        .modal-body { padding: 24px; }
+        
+        .modal-footer {
+            padding: 16px 24px;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+        }
+        
+        /* Toast */
+        .toast-container {
+            position: fixed;
+            top: 24px; right: 24px;
+            z-index: 2000;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        
+        .toast {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 16px 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-width: 300px;
+            animation: slideIn 0.3s ease;
+        }
+        
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        
+        .toast-success { border-left: 4px solid var(--accent-primary); }
+        .toast-error { border-left: 4px solid var(--accent-danger); }
+        
+        /* Spinner */
+        .spinner {
+            width: 20px; height: 20px;
+            border: 2px solid var(--border-color);
+            border-top-color: var(--accent-primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        /* Grid */
+        .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+        .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+        
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 4px;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 20px;
+        }
+        
+        .tab {
+            padding: 12px 20px;
+            cursor: pointer;
+            color: var(--text-secondary);
+            font-weight: 500;
+            transition: all 0.2s ease;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -1px;
+        }
+        
+        .tab:hover { color: var(--text-primary); }
+        .tab.active { color: var(--accent-primary); border-bottom-color: var(--accent-primary); }
+        
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-secondary);
+        }
+        
+        .empty-state svg { width: 64px; height: 64px; margin-bottom: 16px; opacity: 0.5; }
+        
+        /* Setup page */
+        .setup-step { margin-bottom: 24px; }
+        .setup-step-number {
+            width: 32px; height: 32px;
+            background: var(--gradient-glow);
+            color: var(--bg-primary);
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            margin-right: 12px;
+        }
+        
+        @media (max-width: 768px) {
+            .sidebar { transform: translateX(-100%); }
+            .main-content { margin-left: 0; }
+            .grid-2, .grid-3 { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <!-- Login Page -->
+        <div v-if="!isAuthenticated" class="login-page">
+            <!-- Setup Mode -->
+            <div v-if="setupRequired" class="login-container">
+                <div class="login-logo">
+                    <div class="login-logo-icon">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2 1 3 3 3h10c2 0 3-1 3-3V7c0-2-1-3-3-3H7c-2 0-3 1-3 3z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6M12 9v6"/>
+                        </svg>
+                    </div>
+                    <h1>Sanoid Manager</h1>
+                    <p style="color: var(--text-secondary); margin-top: 8px;">Setup Iniziale</p>
+                </div>
+                
+                <div v-if="loginError" class="login-error">{{ loginError }}</div>
+                
+                <form @submit.prevent="doSetup">
+                    <div class="form-group">
+                        <label class="form-label">Username Admin</label>
+                        <input type="text" class="form-input" v-model="setupForm.username" placeholder="admin" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Email</label>
+                        <input type="email" class="form-input" v-model="setupForm.email" placeholder="admin@example.com" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Password</label>
+                        <input type="password" class="form-input" v-model="setupForm.password" placeholder="••••••••" required>
+                        <small style="color: var(--text-secondary);">Min 8 caratteri, maiuscole, minuscole, numeri</small>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Nome Completo</label>
+                        <input type="text" class="form-input" v-model="setupForm.full_name" placeholder="Administrator">
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="width: 100%;" :disabled="loading">
+                        <span v-if="loading" class="spinner"></span>
+                        <span v-else>Crea Account Admin</span>
+                    </button>
+                </form>
+            </div>
+            
+            <!-- Login Form -->
+            <div v-else class="login-container">
+                <div class="login-logo">
+                    <div class="login-logo-icon">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2 1 3 3 3h10c2 0 3-1 3-3V7c0-2-1-3-3-3H7c-2 0-3 1-3 3z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6M12 9v6"/>
+                        </svg>
+                    </div>
+                    <h1>Sanoid Manager</h1>
+                    <p style="color: var(--text-secondary); margin-top: 8px;">Gestione ZFS per Proxmox</p>
+                </div>
+                
+                <div v-if="loginError" class="login-error">{{ loginError }}</div>
+                
+                <form @submit.prevent="doLogin">
+                    <div class="form-group">
+                        <label class="form-label">Username</label>
+                        <input type="text" class="form-input" v-model="loginForm.username" placeholder="Inserisci username" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Password</label>
+                        <input type="password" class="form-input" v-model="loginForm.password" placeholder="••••••••" required>
+                    </div>
+                    <div class="form-group" v-if="authConfig.auth_method === 'proxmox' && authConfig.realms.length > 0">
+                        <label class="form-label">Realm</label>
+                        <select class="form-input" v-model="loginForm.realm">
+                            <option v-for="r in authConfig.realms" :key="r.realm" :value="r.realm">
+                                {{ r.realm }} - {{ r.comment || r.type }}
+                            </option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="width: 100%;" :disabled="loading">
+                        <span v-if="loading" class="spinner"></span>
+                        <span v-else>Accedi</span>
+                    </button>
+                </form>
+                
+                <div v-if="authConfig.auth_method === 'proxmox'" style="text-align: center; margin-top: 20px; color: var(--text-secondary); font-size: 0.8rem;">
+                    🔐 Autenticazione tramite Proxmox VE
+                </div>
+            </div>
+        </div>
+        
+        <!-- Main App (Authenticated) -->
+        <template v-else>
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="logo">
+                <h1>
+                    <div class="logo-icon">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="stroke: #0a0e14">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2 1 3 3 3h10c2 0 3-1 3-3V7c0-2-1-3-3-3H7c-2 0-3 1-3 3z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6M12 9v6"/>
+                        </svg>
+                    </div>
+                    Sanoid Manager
+                </h1>
+            </div>
+                
+            <nav class="nav-menu">
+                    <div class="nav-section">
+                        <div class="nav-section-title">Principale</div>
+                <div class="nav-item" :class="{ active: currentPage === 'dashboard' }" @click="currentPage = 'dashboard'">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"/>
+                    </svg>
+                    Dashboard
+                </div>
+                <div class="nav-item" :class="{ active: currentPage === 'nodes' }" @click="currentPage = 'nodes'">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/>
+                    </svg>
+                    Nodi
+                </div>
+                    </div>
+                    
+                    <div class="nav-section">
+                        <div class="nav-section-title">Storage</div>
+                <div class="nav-item" :class="{ active: currentPage === 'snapshots' }" @click="currentPage = 'snapshots'">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    </svg>
+                    Snapshot
+                </div>
+                <div class="nav-item" :class="{ active: currentPage === 'sync' }" @click="currentPage = 'sync'">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                    </svg>
+                    Replica
+                </div>
+                <div class="nav-item" :class="{ active: currentPage === 'vms' }" @click="currentPage = 'vms'">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                    </svg>
+                    VM
+                </div>
+                    </div>
+                    
+                    <div class="nav-section">
+                        <div class="nav-section-title">Sistema</div>
+                <div class="nav-item" :class="{ active: currentPage === 'logs' }" @click="currentPage = 'logs'">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                    </svg>
+                    Log
+                </div>
+                        <div class="nav-item" :class="{ active: currentPage === 'users' }" @click="currentPage = 'users'" v-if="currentUser?.role === 'admin'">
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
+                            </svg>
+                            Utenti
+                </div>
+                <div class="nav-item" :class="{ active: currentPage === 'settings' }" @click="currentPage = 'settings'">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    </svg>
+                    Impostazioni
+                        </div>
+                </div>
+            </nav>
+                
+                <div class="user-menu">
+                    <div class="user-info">
+                        <div class="user-avatar">{{ currentUser?.username?.charAt(0).toUpperCase() }}</div>
+                        <div class="user-details">
+                            <div class="user-name">{{ currentUser?.full_name || currentUser?.username }}</div>
+                            <div class="user-role">{{ currentUser?.role }} • {{ currentUser?.auth_method }}</div>
+                        </div>
+                    </div>
+                    <button class="btn btn-secondary" style="width: 100%;" @click="doLogout">
+                        Logout
+                    </button>
+                </div>
+        </aside>
+        
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Dashboard -->
+            <div v-if="currentPage === 'dashboard'">
+                <div class="page-header">
+                    <h1 class="page-title">Dashboard</h1>
+                    <p class="page-subtitle">Panoramica del sistema ZFS</p>
+                </div>
+                
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value">{{ nodes.length }}</div>
+                        <div class="stat-label">Nodi Gestiti</div>
+                    </div>
+                    <div class="stat-card">
+                            <div class="stat-value">{{ nodes.filter(n => n.is_online).length }}</div>
+                        <div class="stat-label">Nodi Online</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">{{ syncJobs.length }}</div>
+                        <div class="stat-label">Job Replica</div>
+                    </div>
+                    <div class="stat-card">
+                            <div class="stat-value">{{ syncJobs.filter(j => j.last_status === 'success').length }}</div>
+                            <div class="stat-label">Sync OK</div>
+                    </div>
+                </div>
+                
+                <div class="grid-2">
+                    <div class="card">
+                        <div class="card-header">
+                                <h3 class="card-title">🖥️ Stato Nodi</h3>
+                        </div>
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                        <tr><th>Nome</th><th>Host</th><th>Stato</th><th>Sanoid</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="node in nodes" :key="node.id">
+                                        <td>{{ node.name }}</td>
+                                        <td>{{ node.hostname }}</td>
+                                        <td>
+                                            <span class="badge" :class="node.is_online ? 'badge-success' : 'badge-danger'">
+                                                <span class="status-dot"></span>
+                                                {{ node.is_online ? 'Online' : 'Offline' }}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <span class="badge" :class="node.sanoid_installed ? 'badge-success' : 'badge-warning'">
+                                                    {{ node.sanoid_installed ? 'OK' : 'N/A' }}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                        <tr v-if="nodes.length === 0">
+                                            <td colspan="4" style="text-align: center; color: var(--text-secondary);">Nessun nodo configurato</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <div class="card">
+                        <div class="card-header">
+                                <h3 class="card-title">📋 Attività Recenti</h3>
+                        </div>
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                        <tr><th>Tipo</th><th>Stato</th><th>Data</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="log in recentLogs.slice(0, 5)" :key="log.id">
+                                        <td>{{ log.job_type }}</td>
+                                        <td>
+                                                <span class="badge" :class="getStatusClass(log.status)">{{ log.status }}</span>
+                                        </td>
+                                        <td>{{ formatDate(log.started_at) }}</td>
+                                    </tr>
+                                        <tr v-if="recentLogs.length === 0">
+                                            <td colspan="3" style="text-align: center; color: var(--text-secondary);">Nessuna attività</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+                
+                <!-- Users Page (Admin Only) -->
+                <div v-if="currentPage === 'users' && currentUser?.role === 'admin'">
+                    <div class="page-header">
+                        <h1 class="page-title">Gestione Utenti</h1>
+                        <p class="page-subtitle">Amministrazione utenti e permessi</p>
+                    </div>
+                    
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">👥 Utenti</h3>
+                            <button class="btn btn-primary" @click="showUserModal = true">+ Nuovo Utente</button>
+                        </div>
+                        
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr><th>Username</th><th>Email</th><th>Nome</th><th>Ruolo</th><th>Auth</th><th>Stato</th><th>Ultimo Login</th><th>Azioni</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="u in users" :key="u.id">
+                                        <td>{{ u.username }}</td>
+                                        <td>{{ u.email || '-' }}</td>
+                                        <td>{{ u.full_name || '-' }}</td>
+                                        <td><span class="badge badge-info">{{ u.role }}</span></td>
+                                        <td><span class="badge" :class="u.auth_method === 'proxmox' ? 'badge-success' : 'badge-warning'">{{ u.auth_method }}</span></td>
+                                        <td>
+                                            <span class="badge" :class="u.is_active ? 'badge-success' : 'badge-danger'">
+                                                {{ u.is_active ? 'Attivo' : 'Disabilitato' }}
+                                            </span>
+                                        </td>
+                                        <td>{{ u.last_login ? formatDate(u.last_login) : 'Mai' }}</td>
+                                        <td>
+                                            <button class="btn btn-secondary btn-sm" @click="editUser(u)" v-if="u.id !== currentUser.id">Modifica</button>
+                                            <button class="btn btn-danger btn-sm" @click="deleteUser(u)" v-if="u.id !== currentUser.id">Elimina</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Nodes Page -->
+            <div v-if="currentPage === 'nodes'">
+                <div class="page-header">
+                    <h1 class="page-title">Nodi Proxmox</h1>
+                    <p class="page-subtitle">Gestione nodi e connessioni SSH</p>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">Lista Nodi</h3>
+                            <button class="btn btn-primary" @click="showNodeModal = true" v-if="canEdit">+ Aggiungi Nodo</button>
+                    </div>
+                    
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                    <tr><th>Nome</th><th>Hostname</th><th>Porta</th><th>Stato</th><th>Sanoid</th><th>Auth Node</th><th>Azioni</th></tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="node in nodes" :key="node.id">
+                                    <td>{{ node.name }}</td>
+                                    <td>{{ node.hostname }}</td>
+                                    <td>{{ node.ssh_port }}</td>
+                                    <td>
+                                        <span class="badge" :class="node.is_online ? 'badge-success' : 'badge-danger'">
+                                            <span class="status-dot"></span>
+                                            {{ node.is_online ? 'Online' : 'Offline' }}
+                                        </span>
+                                    </td>
+                                        <td><span class="badge" :class="node.sanoid_installed ? 'badge-success' : 'badge-warning'">{{ node.sanoid_installed ? 'OK' : 'N/A' }}</span></td>
+                                        <td><span v-if="node.is_auth_node" class="badge badge-info">🔐</span></td>
+                                        <td>
+                                            <button class="btn btn-secondary btn-sm" @click="testNode(node)" :disabled="loading">Test</button>
+                                            <button class="btn btn-secondary btn-sm" @click="refreshNodeDatasets(node)" :disabled="loading">Refresh</button>
+                                            <button v-if="!node.sanoid_installed && canEdit" class="btn btn-primary btn-sm" @click="installSanoid(node)" :disabled="loading">Sanoid</button>
+                                            <button v-if="currentUser?.role === 'admin'" class="btn btn-danger btn-sm" @click="deleteNode(node)" :disabled="loading">Elimina</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+                <!-- Snapshots, Sync, VMs, Logs, Settings pages... -->
+                <!-- (keeping existing implementation but with auth checks) -->
+                
+            <div v-if="currentPage === 'snapshots'">
+                <div class="page-header">
+                    <h1 class="page-title">Gestione Snapshot</h1>
+                    <p class="page-subtitle">Configurazione Sanoid e snapshot ZFS</p>
+                </div>
+                
+                <div class="card">
+                        <div class="card-header"><h3 class="card-title">Seleziona Nodo</h3></div>
+                    <div class="form-group">
+                        <select class="form-input" v-model="selectedNodeId" @change="loadNodeDatasets">
+                            <option value="">-- Seleziona un nodo --</option>
+                                <option v-for="node in nodes" :key="node.id" :value="node.id">{{ node.name }} ({{ node.hostname }})</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="card" v-if="selectedNodeId && datasets.length > 0">
+                    <div class="card-header">
+                        <h3 class="card-title">Dataset ZFS</h3>
+                        <div>
+                                <button class="btn btn-secondary btn-sm" @click="loadNodeSnapshots" :disabled="loading">Carica Snapshot</button>
+                                <button class="btn btn-primary btn-sm" @click="applySanoidConfig" :disabled="loading" v-if="canEdit">Applica Config</button>
+                        </div>
+                    </div>
+                    <div class="table-container">
+                        <table>
+                                <thead><tr><th>Dataset</th><th>Usato</th><th>Disponibile</th><th>Snapshot</th><th>Sanoid</th><th>Template</th></tr></thead>
+                            <tbody>
+                                <tr v-for="ds in datasets" :key="ds.id">
+                                    <td>{{ ds.name }}</td>
+                                    <td>{{ ds.used }}</td>
+                                    <td>{{ ds.available }}</td>
+                                    <td>{{ ds.snapshot_count }}</td>
+                                        <td><input type="checkbox" v-model="ds.sanoid_enabled" @change="updateDatasetConfig(ds)" :disabled="!canEdit"></td>
+                                    <td>
+                                            <select class="form-input" style="width: auto" v-model="ds.sanoid_template" @change="updateDatasetConfig(ds)" :disabled="!ds.sanoid_enabled || !canEdit">
+                                            <option value="default">Default</option>
+                                            <option value="production">Production</option>
+                                            <option value="minimal">Minimal</option>
+                                            <option value="backup">Backup</option>
+                                            <option value="vm">VM</option>
+                                        </select>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            <div v-if="currentPage === 'sync'">
+                <div class="page-header">
+                    <h1 class="page-title">🔄 Replica VM</h1>
+                    <p class="page-subtitle">Replica completa di Virtual Machine tra nodi Proxmox</p>
+                </div>
+                
+                <!-- Wizard Nuova Replica VM -->
+                <div class="card" v-if="!vmReplicaWizard.active">
+                    <div class="card-header">
+                        <h3 class="card-title">Crea Nuova Replica VM</h3>
+                    </div>
+                    <div class="grid-2" style="padding: 20px;">
+                        <div class="form-group">
+                            <label class="form-label">📤 Nodo Sorgente</label>
+                            <select class="form-input" v-model="vmReplicaWizard.sourceNodeId" @change="loadSourceVMs">
+                                <option value="">Seleziona nodo sorgente</option>
+                                <option v-for="n in nodes" :key="n.id" :value="n.id">{{ n.name }} ({{ n.hostname }})</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">📥 Nodo Destinazione</label>
+                            <select class="form-input" v-model="vmReplicaWizard.destNodeId" @change="loadDestPools">
+                                <option value="">Seleziona nodo destinazione</option>
+                                <option v-for="n in nodes" :key="n.id" :value="n.id" :disabled="n.id == vmReplicaWizard.sourceNodeId">{{ n.name }} ({{ n.hostname }})</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <!-- Lista VM -->
+                    <div v-if="sourceVMs.length > 0" style="padding: 0 20px 20px;">
+                        <h4 style="margin-bottom: 12px; color: var(--accent-primary);">🖥️ Seleziona VM da Replicare</h4>
+                        <div class="table-container">
+                            <table>
+                                <thead><tr><th>VMID</th><th>Nome</th><th>Tipo</th><th>Stato</th><th>Azione</th></tr></thead>
+                                <tbody>
+                                    <tr v-for="vm in sourceVMs" :key="vm.vmid">
+                                        <td><strong>{{ vm.vmid }}</strong></td>
+                                        <td>{{ vm.name }}</td>
+                                        <td><span class="badge badge-info">{{ vm.type }}</span></td>
+                                        <td><span class="badge" :class="vm.status === 'running' ? 'badge-success' : 'badge-warning'">{{ vm.status }}</span></td>
+                                        <td>
+                                            <button class="btn btn-primary btn-sm" @click="selectVMForReplica(vm)" :disabled="!vmReplicaWizard.destNodeId">
+                                                Configura Replica →
+                                            </button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Configurazione Replica VM -->
+                <div class="card" v-if="vmReplicaWizard.active">
+                    <div class="card-header">
+                        <h3 class="card-title">⚙️ Configura Replica VM {{ vmReplicaWizard.selectedVM?.vmid }} - {{ vmReplicaWizard.selectedVM?.name }}</h3>
+                        <button class="btn btn-secondary" @click="cancelVMReplica">← Indietro</button>
+                    </div>
+                    
+                    <div style="padding: 20px;">
+                        <!-- Info Dischi -->
+                        <div v-if="vmReplicaWizard.disks.length > 0">
+                            <h4 style="margin-bottom: 12px; color: var(--accent-secondary);">💾 Dischi da Replicare</h4>
+                            <div class="table-container" style="margin-bottom: 20px;">
+                                <table>
+                                    <thead><tr><th>Disco</th><th>Dataset ZFS</th><th>Dimensione</th><th>Replica</th></tr></thead>
+                                    <tbody>
+                                        <tr v-for="disk in vmReplicaWizard.disks" :key="disk.disk_name">
+                                            <td><strong>{{ disk.disk_name }}</strong></td>
+                                            <td><code style="font-size: 0.85rem;">{{ disk.dataset || 'N/A' }}</code></td>
+                                            <td><span class="badge badge-info">{{ disk.size }}</span></td>
+                                            <td>
+                                                <input type="checkbox" v-model="disk.selected" :disabled="!disk.dataset">
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div style="background: var(--bg-tertiary); padding: 12px; border-radius: 8px; margin-bottom: 20px;">
+                                <strong>📊 Totale:</strong> {{ vmReplicaWizard.disks.filter(d => d.selected).length }} dischi selezionati, 
+                                <span style="color: var(--accent-primary);">{{ vmReplicaWizard.totalSize }}</span> da trasferire
+                            </div>
+                        </div>
+                        <div v-else style="text-align: center; padding: 20px; color: var(--text-secondary);">
+                            <span v-if="loading">⏳ Caricamento dischi...</span>
+                            <span v-else>⚠️ Nessun disco ZFS trovato per questa VM</span>
+                        </div>
+                        
+                        <!-- Configurazione Destinazione -->
+                        <h4 style="margin: 20px 0 12px; color: var(--accent-warning);">📥 Destinazione</h4>
+                        <div class="grid-2">
+                            <div class="form-group">
+                                <label class="form-label">Pool ZFS Destinazione</label>
+                                <select class="form-input" v-model="vmReplicaWizard.destPool">
+                                    <option value="">Seleziona pool</option>
+                                    <option v-for="pool in destPools" :key="pool" :value="pool">{{ pool }}</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Sottocartella ZFS</label>
+                                <input type="text" class="form-input" v-model="vmReplicaWizard.destSubfolder" placeholder="replica">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Nome Storage Proxmox Destinazione 
+                                <small style="color: var(--text-secondary);">(verrà creato automaticamente se non esiste)</small>
+                            </label>
+                            <input type="text" class="form-input" v-model="vmReplicaWizard.destStorage" :placeholder="vmReplicaWizard.destSubfolder || 'replica-storage'">
+                            <small style="color: var(--accent-warning); display: block; margin-top: 4px;">
+                                ⚠️ Questo storage verrà usato nella configurazione della VM replicata
+                            </small>
+                        </div>
+                        <div class="grid-2">
+                            <div class="form-group">
+                                <label class="form-label">VMID Destinazione <small style="color: var(--text-secondary);">(se diverso)</small></label>
+                                <input type="number" class="form-input" v-model="vmReplicaWizard.destVmId" :placeholder="vmReplicaWizard.selectedVM?.vmid">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Schedule (cron)</label>
+                                <select class="form-input" v-model="vmReplicaWizard.schedule">
+                                    <option value="">Manuale</option>
+                                    <option value="0 */4 * * *">Ogni 4 ore</option>
+                                    <option value="0 2 * * *">Ogni notte alle 2:00</option>
+                                    <option value="*/30 * * * *">Ogni 30 minuti</option>
+                                    <option value="0 0 * * 0">Ogni domenica</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <!-- Opzioni -->
+                        <h4 style="margin: 20px 0 12px; color: var(--accent-info);">⚡ Opzioni</h4>
+                        <div class="grid-2">
+                            <div class="form-group">
+                                <label class="form-label">Compressione</label>
+                                <select class="form-input" v-model="vmReplicaWizard.compress">
+                                    <option value="lz4">LZ4 (veloce)</option>
+                                    <option value="zstd">ZSTD (bilanciato)</option>
+                                    <option value="gzip">GZIP (compatibile)</option>
+                                    <option value="none">Nessuna</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" style="display: flex; align-items: center; gap: 8px;">
+                                    <input type="checkbox" v-model="vmReplicaWizard.registerVM">
+                                    Registra VM su destinazione dopo replica
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <!-- Preview Destinazione -->
+                        <div v-if="vmReplicaWizard.destPool" style="background: var(--bg-tertiary); padding: 16px; border-radius: 8px; margin-top: 20px;">
+                            <h5 style="margin-bottom: 8px;">📋 Anteprima Dataset Destinazione:</h5>
+                            <div v-for="disk in vmReplicaWizard.disks.filter(d => d.selected && d.dataset)" :key="disk.disk_name" style="font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; margin: 4px 0;">
+                                {{ disk.disk_name }}: <span style="color: var(--accent-primary);">{{ vmReplicaWizard.destPool }}/{{ vmReplicaWizard.destSubfolder }}/{{ disk.dataset.split('/').pop() }}</span>
+                            </div>
+                        </div>
+                        
+                        <!-- Azioni -->
+                        <div style="margin-top: 24px; display: flex; gap: 12px; justify-content: flex-end;">
+                            <button class="btn btn-secondary" @click="cancelVMReplica">Annulla</button>
+                            <button class="btn btn-primary" @click="createVMReplica" :disabled="loading || !vmReplicaWizard.destPool || vmReplicaWizard.disks.filter(d => d.selected).length === 0">
+                                🚀 Crea {{ vmReplicaWizard.disks.filter(d => d.selected).length }} Job di Replica
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Job Esistenti Raggruppati per VM -->
+                <div class="card" style="margin-top: 20px;">
+                    <div class="card-header">
+                        <h3 class="card-title">📋 Repliche VM Configurate</h3>
+                        <button class="btn btn-secondary" @click="loadSyncJobs" :disabled="loading">🔄 Aggiorna</button>
+                    </div>
+                    
+                    <div v-if="vmGroups.length > 0">
+                        <div v-for="group in vmGroups" :key="group.vm_group_id" style="border-bottom: 1px solid var(--border-color); padding: 16px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                                <div>
+                                    <h4 style="color: var(--accent-primary); margin: 0;">
+                                        🖥️ VM {{ group.vm_id }} <span v-if="group.vm_name">- {{ group.vm_name }}</span>
+                                        <span v-if="group.dest_vm_id && group.dest_vm_id != group.vm_id" style="color: var(--text-secondary);"> → VM {{ group.dest_vm_id }}</span>
+                                    </h4>
+                                    <small style="color: var(--text-secondary);">
+                                        {{ group.jobs.length }} dischi • {{ group.source_node }} → {{ group.dest_node }} • 
+                                        <span v-if="group.schedule">⏰ {{ group.schedule }}</span>
+                                        <span v-else>Manuale</span>
+                                    </small>
+                                </div>
+                                <div style="display: flex; gap: 8px;">
+                                    <button class="btn btn-primary btn-sm" @click="runVMGroup(group.vm_group_id)" :disabled="loading" title="Esegui tutti">▶ Run All</button>
+                                    <button class="btn btn-info btn-sm" @click="registerVMGroup(group)" :disabled="loading" v-if="group.register_vm" title="Registra VM">📋 Registra</button>
+                                    <button class="btn btn-danger btn-sm" @click="deleteVMGroup(group.vm_group_id)" :disabled="loading" title="Elimina gruppo">🗑️</button>
+                                </div>
+                            </div>
+                            
+                            <!-- Mini tabella dischi -->
+                            <table style="width: 100%; font-size: 0.85rem;">
+                                <thead><tr><th>Disco</th><th>Dataset</th><th>Stato</th><th>Ultimo Run</th></tr></thead>
+                                <tbody>
+                                    <tr v-for="job in group.jobs" :key="job.id">
+                                        <td>{{ job.disk_name || 'disk' }}</td>
+                                        <td style="font-family: 'JetBrains Mono', monospace;">{{ job.source_dataset.split('/').pop() }}</td>
+                                        <td><span class="badge" :class="getStatusClass(job.last_status)">{{ job.last_status || 'N/A' }}</span></td>
+                                        <td>{{ job.last_run ? formatDate(job.last_run) : '-' }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <!-- Job Singoli (senza gruppo) -->
+                    <div v-if="singleJobs.length > 0" style="padding: 16px;">
+                        <h4 style="color: var(--text-secondary); margin-bottom: 12px;">📁 Job Singoli (Legacy)</h4>
+                        <div class="table-container">
+                            <table>
+                                <thead><tr><th>Nome</th><th>Sorgente</th><th>Destinazione</th><th>Stato</th><th>Azioni</th></tr></thead>
+                                <tbody>
+                                    <tr v-for="job in singleJobs" :key="job.id">
+                                        <td>{{ job.name }}</td>
+                                        <td>{{ job.source_dataset }}</td>
+                                        <td>{{ job.dest_dataset }}</td>
+                                        <td><span class="badge" :class="getStatusClass(job.last_status)">{{ job.last_status || 'N/A' }}</span></td>
+                                        <td>
+                                            <button class="btn btn-primary btn-sm" @click="runSyncJob(job)" :disabled="loading">▶</button>
+                                            <button class="btn btn-danger btn-sm" @click="deleteSyncJob(job)" :disabled="loading">✕</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <div v-if="vmGroups.length === 0 && singleJobs.length === 0" style="padding: 40px; text-align: center; color: var(--text-secondary);">
+                        Nessuna replica configurata. Seleziona una VM sopra per iniziare.
+                    </div>
+                </div>
+            </div>
+            
+            <div v-if="currentPage === 'vms'">
+                <div class="page-header">
+                    <h1 class="page-title">Virtual Machines</h1>
+                    <p class="page-subtitle">Gestione VM e registrazione post-replica</p>
+                </div>
+                <div class="card">
+                    <div class="form-group">
+                            <label class="form-label">Seleziona Nodo</label>
+                        <select class="form-input" v-model="selectedVmNodeId" @change="loadNodeVms">
+                                <option value="">-- Seleziona --</option>
+                                <option v-for="node in nodes" :key="node.id" :value="node.id">{{ node.name }}</option>
+                        </select>
+                    </div>
+                </div>
+                    <div class="card" v-if="nodeVms.length > 0">
+                    <div class="table-container">
+                        <table>
+                                <thead><tr><th>VMID</th><th>Nome</th><th>Tipo</th><th>Stato</th><th>Azioni</th></tr></thead>
+                            <tbody>
+                                <tr v-for="vm in nodeVms" :key="vm.vmid">
+                                    <td>{{ vm.vmid }}</td>
+                                    <td>{{ vm.name }}</td>
+                                        <td><span class="badge badge-info">{{ vm.type }}</span></td>
+                                        <td><span class="badge" :class="vm.status === 'running' ? 'badge-success' : 'badge-warning'">{{ vm.status }}</span></td>
+                                        <td><button class="btn btn-secondary btn-sm" @click="getVmDatasets(vm)">Dataset</button></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            <div v-if="currentPage === 'logs'">
+                <div class="page-header">
+                    <h1 class="page-title">Log Operazioni</h1>
+                    <p class="page-subtitle">Storico delle attività</p>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">Log Recenti</h3>
+                            <button class="btn btn-secondary" @click="loadLogs" :disabled="loading">Aggiorna</button>
+                    </div>
+                    <div class="table-container">
+                        <table>
+                                <thead><tr><th>Data</th><th>Tipo</th><th>Nodo/Dataset</th><th>Stato</th><th>Durata</th><th>Dettagli</th></tr></thead>
+                            <tbody>
+                                    <tr v-for="log in allLogs" :key="log.id" :style="log.status === 'failed' ? 'background: rgba(255,71,87,0.05)' : ''">
+                                    <td>{{ formatDate(log.started_at) }}</td>
+                                    <td>{{ log.job_type }}</td>
+                                        <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis;">
+                                            <div>{{ log.node_name }}</div>
+                                            <small style="color: var(--text-secondary);">{{ log.dataset }}</small>
+                                    </td>
+                                        <td><span class="badge" :class="getStatusClass(log.status)">{{ log.status }}</span></td>
+                                    <td>{{ log.duration ? log.duration + 's' : '-' }}</td>
+                                        <td>
+                                            <button class="btn btn-secondary btn-sm" @click="showLogDetail(log)">
+                                                {{ log.error ? '⚠️ Errore' : 'Dettagli' }}
+                                            </button>
+                                        </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    </div>
+                    
+                    <!-- Log Detail Modal -->
+                    <div class="modal-overlay" v-if="selectedLog" @click.self="selectedLog = null">
+                        <div class="modal" style="max-width: 800px;">
+                            <div class="modal-header">
+                                <h3 class="modal-title">Dettagli Log #{{ selectedLog.id }}</h3>
+                                <button class="btn btn-icon" @click="selectedLog = null">✕</button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="grid-2" style="margin-bottom: 20px;">
+                                    <div>
+                                        <strong>Tipo:</strong> {{ selectedLog.job_type }}<br>
+                                        <strong>Nodo:</strong> {{ selectedLog.node_name }}<br>
+                                        <strong>Dataset:</strong> {{ selectedLog.dataset }}
+                                    </div>
+                                    <div>
+                                        <strong>Stato:</strong> <span class="badge" :class="getStatusClass(selectedLog.status)">{{ selectedLog.status }}</span><br>
+                                        <strong>Durata:</strong> {{ selectedLog.duration ? selectedLog.duration + ' secondi' : '-' }}<br>
+                                        <strong>Trasferito:</strong> {{ selectedLog.transferred || '-' }}
+                </div>
+            </div>
+            
+                                <div v-if="selectedLog.error" style="background: rgba(255,71,87,0.1); border: 1px solid var(--accent-danger); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+                                    <h4 style="color: var(--accent-danger); margin-bottom: 8px;">❌ Errore</h4>
+                                    <pre style="white-space: pre-wrap; font-size: 0.85rem; color: var(--accent-danger); margin: 0;">{{ selectedLog.error }}</pre>
+                                </div>
+                                
+                                <div v-if="selectedLog.output" style="background: var(--bg-tertiary); padding: 16px; border-radius: 8px;">
+                                    <h4 style="margin-bottom: 8px;">📋 Output</h4>
+                                    <pre style="white-space: pre-wrap; font-size: 0.85rem; max-height: 300px; overflow-y: auto; margin: 0;">{{ selectedLog.output }}</pre>
+                                </div>
+                                
+                                <div v-if="!selectedLog.error && !selectedLog.output" style="text-align: center; color: var(--text-secondary); padding: 20px;">
+                                    Nessun dettaglio disponibile
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            
+            <div v-if="currentPage === 'settings'">
+                <div class="page-header">
+                    <h1 class="page-title">Impostazioni</h1>
+                        <p class="page-subtitle">Configurazione del sistema</p>
+                </div>
+                
+                    <div class="tabs">
+                        <div class="tab" :class="{active: settingsTab === 'general'}" @click="settingsTab = 'general'">Generale</div>
+                        <div class="tab" :class="{active: settingsTab === 'auth'}" @click="settingsTab = 'auth'" v-if="currentUser?.role === 'admin'">Autenticazione</div>
+                        <div class="tab" :class="{active: settingsTab === 'notifications'}" @click="settingsTab = 'notifications'" v-if="currentUser?.role === 'admin'">Notifiche</div>
+                    </div>
+                    
+                    <div class="card" v-if="settingsTab === 'general'">
+                        <h3 class="card-title" style="margin-bottom: 20px;">⚙️ Impostazioni Generali</h3>
+                    <div class="grid-2">
+                        <div class="form-group">
+                            <label class="form-label">Compressione Default</label>
+                                <select class="form-input" v-model="settings.syncoid_default_compress" :disabled="!isAdmin">
+                                <option value="none">Nessuna</option>
+                                <option value="gzip">gzip</option>
+                                <option value="lz4">lz4</option>
+                                <option value="zstd">zstd</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                                <label class="form-label">Buffer Size</label>
+                                <input type="text" class="form-input" v-model="settings.syncoid_default_mbuffer" :disabled="!isAdmin">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Retention Log (giorni)</label>
+                                <input type="number" class="form-input" v-model="settings.log_retention_days" :disabled="!isAdmin">
+                        </div>
+                        </div>
+                        <button class="btn btn-primary" @click="saveSettings" :disabled="loading || !isAdmin" v-if="isAdmin">Salva</button>
+                    </div>
+                    
+                    <div class="card" v-if="settingsTab === 'auth' && isAdmin">
+                        <h3 class="card-title" style="margin-bottom: 20px;">🔐 Autenticazione</h3>
+                        <div class="grid-2">
+                        <div class="form-group">
+                                <label class="form-label">Metodo Autenticazione</label>
+                                <select class="form-input" v-model="authSettings.auth_method">
+                                    <option value="local">Locale</option>
+                                    <option value="proxmox">Proxmox VE</option>
+                                </select>
+                        </div>
+                            <div class="form-group">
+                                <label class="form-label">Timeout Sessione (minuti)</label>
+                                <input type="number" class="form-input" v-model="authSettings.auth_session_timeout">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">
+                                    <input type="checkbox" v-model="authSettings.auth_allow_local_fallback">
+                                    Permetti fallback locale
+                                </label>
+                            </div>
+                        </div>
+                        <button class="btn btn-primary" @click="saveAuthSettings" :disabled="loading">Salva</button>
+                    </div>
+                    
+                    <div class="card" v-if="settingsTab === 'notifications' && isAdmin">
+                        <h3 class="card-title" style="margin-bottom: 20px;">🔔 Notifiche</h3>
+                        <div class="form-group">
+                            <label class="form-label"><input type="checkbox" v-model="notifSettings.smtp_enabled"> Abilita Email</label>
+                        </div>
+                        <div class="grid-2" v-if="notifSettings.smtp_enabled">
+                            <div class="form-group">
+                                <label class="form-label">Server SMTP</label>
+                                <input type="text" class="form-input" v-model="notifSettings.smtp_host">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Porta</label>
+                                <input type="number" class="form-input" v-model="notifSettings.smtp_port">
+                            </div>
+                        </div>
+                        <hr style="border-color: var(--border-color); margin: 20px 0;">
+                        <div class="form-group">
+                            <label class="form-label"><input type="checkbox" v-model="notifSettings.notify_on_failure"> Notifica su errori</label>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label"><input type="checkbox" v-model="notifSettings.notify_on_success"> Notifica su successi</label>
+                        </div>
+                        <button class="btn btn-primary" @click="saveNotifSettings" :disabled="loading">Salva</button>
+                </div>
+            </div>
+        </main>
+        </template>
+        
+        <!-- Modals... (keeping existing but simplified) -->
+        <div class="modal-overlay" v-if="showNodeModal" @click.self="showNodeModal = false">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3 class="modal-title">Aggiungi Nodo</h3>
+                    <button class="btn btn-icon" @click="showNodeModal = false">✕</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label class="form-label">Nome</label>
+                        <input type="text" class="form-input" v-model="newNode.name" placeholder="pve-node-01">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Hostname/IP</label>
+                        <input type="text" class="form-input" v-model="newNode.hostname" placeholder="192.168.1.10">
+                    </div>
+                    <div class="grid-2">
+                        <div class="form-group">
+                            <label class="form-label">Porta SSH</label>
+                            <input type="number" class="form-input" v-model="newNode.ssh_port">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Utente</label>
+                            <input type="text" class="form-input" v-model="newNode.ssh_user">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Chiave SSH</label>
+                        <input type="text" class="form-input" v-model="newNode.ssh_key_path">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @click="showNodeModal = false">Annulla</button>
+                    <button class="btn btn-primary" @click="createNode" :disabled="loading">Aggiungi</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="modal-overlay" v-if="showSyncJobModal" @click.self="showSyncJobModal = false">
+            <div class="modal" style="max-width: 700px;">
+                <div class="modal-header">
+                    <h3 class="modal-title">Nuovo Job Replica</h3>
+                    <button class="btn btn-icon" @click="showSyncJobModal = false">✕</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label class="form-label">Nome Job</label>
+                        <input type="text" class="form-input" v-model="newSyncJob.name" placeholder="backup-vm-100">
+                    </div>
+                    
+                    <div style="background: var(--bg-tertiary); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+                        <h4 style="margin-bottom: 12px; color: var(--accent-primary);">📤 Sorgente</h4>
+                    <div class="grid-2">
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label class="form-label">Nodo</label>
+                                <select class="form-input" v-model="newSyncJob.source_node_id" @change="loadSourceDatasets">
+                                    <option value="">-- Seleziona nodo --</option>
+                                    <option v-for="n in nodes" :key="n.id" :value="n.id">{{ n.name }} ({{ n.hostname }})</option>
+                            </select>
+                        </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label class="form-label">Dataset</label>
+                                <select class="form-input" v-model="newSyncJob.source_dataset" @change="updateDestDataset" v-if="sourceDatasets.length > 0">
+                                    <option value="">-- Seleziona dataset --</option>
+                                    <option v-for="ds in sourceDatasets" :key="ds.name" :value="ds.name">{{ ds.name }}</option>
+                            </select>
+                                <input type="text" class="form-input" v-model="newSyncJob.source_dataset" @input="updateDestDataset" placeholder="rpool/data/vm-100-disk-0" v-else>
+                        </div>
+                    </div>
+                        </div>
+                    
+                    <div style="background: var(--bg-tertiary); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+                        <h4 style="margin-bottom: 12px; color: var(--accent-secondary);">📥 Destinazione</h4>
+                        <div class="form-group">
+                            <label class="form-label">Nodo</label>
+                            <select class="form-input" v-model="newSyncJob.dest_node_id" @change="onDestNodeChange">
+                                <option value="">-- Seleziona nodo --</option>
+                                <option v-for="n in nodes" :key="n.id" :value="n.id">{{ n.name }} ({{ n.hostname }})</option>
+                            </select>
+                        </div>
+                        <div class="form-group" v-if="newSyncJob.dest_node_id">
+                            <label class="form-label">Pool/Root Destinazione</label>
+                            <div style="display: flex; gap: 8px;">
+                                <select class="form-input" v-model="destRootPool" @change="updateDestDataset" style="flex: 1;">
+                                    <option value="">-- Seleziona pool --</option>
+                                    <option v-for="pool in destPools" :key="pool" :value="pool">{{ pool }}</option>
+                                </select>
+                                <input type="text" class="form-input" v-model="destSubPath" @input="updateDestDataset" 
+                                       placeholder="replica" style="flex: 1;">
+                    </div>
+                            <small style="color: var(--text-secondary);">Pool + sottocartella (es: replica, backup)</small>
+                    </div>
+                        <div class="form-group" style="margin-bottom: 0;" v-if="newSyncJob.dest_node_id">
+                            <label class="form-label">Dataset Destinazione Finale</label>
+                            <input type="text" class="form-input" v-model="newSyncJob.dest_dataset" 
+                                   placeholder="ZFS/replica/vm-202-disk-0"
+                                   style="font-family: 'JetBrains Mono', monospace; background: var(--bg-primary);">
+                            <small v-if="newSyncJob.source_dataset && suggestedDestDataset" style="color: var(--accent-primary); cursor: pointer;" @click="newSyncJob.dest_dataset = suggestedDestDataset">
+                                💡 Clicca per usare: <strong>{{ suggestedDestDataset }}</strong>
+                            </small>
+                        </div>
+                    </div>
+                    
+                    <div class="grid-2">
+                        <div class="form-group">
+                            <label class="form-label">Schedule (cron)</label>
+                            <select class="form-input" v-model="selectedSchedule" @change="applySchedule">
+                                <option value="">Manuale</option>
+                                <option value="*/30 * * * *">Ogni 30 minuti</option>
+                                <option value="0 * * * *">Ogni ora</option>
+                                <option value="0 */4 * * *">Ogni 4 ore</option>
+                                <option value="0 */6 * * *">Ogni 6 ore</option>
+                                <option value="0 */12 * * *">Ogni 12 ore</option>
+                                <option value="0 2 * * *">Ogni notte alle 2:00</option>
+                                <option value="custom">Personalizzato...</option>
+                            </select>
+                        </div>
+                        <div class="form-group" v-if="selectedSchedule === 'custom'">
+                            <label class="form-label">Cron Expression</label>
+                            <input type="text" class="form-input" v-model="newSyncJob.schedule" placeholder="0 */4 * * *">
+                        </div>
+                        <div class="form-group" v-else>
+                            <label class="form-label">Compressione</label>
+                            <select class="form-input" v-model="newSyncJob.compress">
+                                <option value="none">Nessuna</option>
+                                <option value="lz4">LZ4 (veloce)</option>
+                                <option value="gzip">Gzip (bilanciato)</option>
+                                <option value="zstd">Zstd (efficiente)</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                        <div class="form-group">
+                            <label class="form-label">
+                            <input type="checkbox" v-model="newSyncJob.recursive"> Ricorsivo (include sotto-dataset)
+                            </label>
+                        </div>
+                    
+                    <hr style="border-color: var(--border-color); margin: 20px 0;">
+                    
+                    <div class="form-group">
+                        <label class="form-label">
+                            <input type="checkbox" v-model="newSyncJob.register_vm"> 🖥️ Registra VM dopo replica
+                        </label>
+                        <small style="color: var(--text-secondary); display: block;">La VM verrà registrata sul nodo destinazione in stato spento</small>
+                    </div>
+                    
+                    <div v-if="newSyncJob.register_vm" style="background: rgba(0, 212, 255, 0.1); padding: 16px; border-radius: 8px; border: 1px solid var(--accent-secondary);">
+                        <div class="grid-2">
+                            <div class="form-group" style="margin-bottom: 8px;">
+                                <label class="form-label">VMID Sorgente</label>
+                                <input type="number" class="form-input" v-model="newSyncJob.vm_id" placeholder="100">
+                        </div>
+                            <div class="form-group" style="margin-bottom: 8px;">
+                                <label class="form-label">VMID Destinazione <small style="color: var(--text-secondary);">(opzionale, se diverso)</small></label>
+                                <input type="number" class="form-input" v-model="newSyncJob.dest_vm_id" :placeholder="newSyncJob.vm_id || '100'">
+                            </div>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label class="form-label">Tipo VM</label>
+                            <select class="form-input" v-model="newSyncJob.vm_type">
+                                <option value="qemu">QEMU/KVM</option>
+                                <option value="lxc">LXC Container</option>
+                            </select>
+                        </div>
+                        <small style="color: var(--text-secondary); display: block; margin-top: 8px;">
+                            💡 Se specifichi un VMID destinazione diverso, la VM verrà registrata con il nuovo ID sul nodo di destinazione.
+                        </small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @click="showSyncJobModal = false">Annulla</button>
+                    <button class="btn btn-primary" @click="createSyncJob" :disabled="loading">
+                        <span v-if="loading" class="spinner"></span>
+                        <span v-else>Crea Job</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="modal-overlay" v-if="showUserModal" @click.self="showUserModal = false">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3 class="modal-title">{{ editingUser ? 'Modifica' : 'Nuovo' }} Utente</h3>
+                    <button class="btn btn-icon" @click="showUserModal = false">✕</button>
+            </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label class="form-label">Username</label>
+                        <input type="text" class="form-input" v-model="newUser.username" :disabled="editingUser">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Email</label>
+                        <input type="email" class="form-input" v-model="newUser.email">
+                    </div>
+                    <div class="form-group" v-if="!editingUser">
+                        <label class="form-label">Password</label>
+                        <input type="password" class="form-input" v-model="newUser.password">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Nome Completo</label>
+                        <input type="text" class="form-input" v-model="newUser.full_name">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Ruolo</label>
+                        <select class="form-input" v-model="newUser.role">
+                            <option value="admin">Admin</option>
+                            <option value="operator">Operator</option>
+                            <option value="viewer">Viewer</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @click="showUserModal = false">Annulla</button>
+                    <button class="btn btn-primary" @click="saveUser" :disabled="loading">Salva</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Toast -->
+        <div class="toast-container">
+            <div v-for="toast in toasts" :key="toast.id" class="toast" :class="'toast-' + toast.type">{{ toast.message }}</div>
+        </div>
+    </div>
+    
+    <script>
+        const { createApp, ref, computed, onMounted, watch } = Vue;
+        const API = '/api';
+        
+        // Setup axios interceptor
+        axios.interceptors.request.use(config => {
+            const token = localStorage.getItem('access_token');
+            if (token) config.headers.Authorization = `Bearer ${token}`;
+            return config;
+        });
+        
+        axios.interceptors.response.use(
+            response => response,
+            error => {
+                if (error.response?.status === 401) {
+                    localStorage.removeItem('access_token');
+                    localStorage.removeItem('refresh_token');
+                    localStorage.removeItem('user');
+                    window.location.reload();
+                }
+                return Promise.reject(error);
+            }
+        );
+        
+        createApp({
+            setup() {
+                // Auth state
+                const isAuthenticated = ref(false);
+                const setupRequired = ref(false);
+                const currentUser = ref(null);
+                const authConfig = ref({ auth_method: 'local', realms: [], allow_local_fallback: true });
+                
+                const loginForm = ref({ username: '', password: '', realm: 'pam' });
+                const setupForm = ref({ username: '', email: '', password: '', full_name: '' });
+                const loginError = ref('');
+                
+                // App state
+                const currentPage = ref('dashboard');
+                const settingsTab = ref('general');
+                const loading = ref(false);
+                const toasts = ref([]);
+                
+                // Data
+                const nodes = ref([]);
+                const syncJobs = ref([]);
+                const recentLogs = ref([]);
+                const allLogs = ref([]);
+                const datasets = ref([]);
+                const snapshots = ref([]);
+                const nodeVms = ref([]);
+                const users = ref([]);
+                
+                const selectedNodeId = ref('');
+                const selectedVmNodeId = ref('');
+                
+                // Settings
+                const settings = ref({ syncoid_default_compress: 'lz4', syncoid_default_mbuffer: '128M', log_retention_days: 30 });
+                const authSettings = ref({ auth_method: 'proxmox', auth_session_timeout: 480, auth_allow_local_fallback: true });
+                const notifSettings = ref({ smtp_enabled: false, smtp_host: '', smtp_port: 587, notify_on_failure: true, notify_on_success: false });
+                
+                // Modals
+                const showNodeModal = ref(false);
+                const showSyncJobModal = ref(false);
+                const editingSyncJobId = ref(null);
+                const showUserModal = ref(false);
+                const editingUser = ref(null);
+                const selectedLog = ref(null);
+                
+                // Forms
+                const newNode = ref({ name: '', hostname: '', ssh_port: 22, ssh_user: 'root', ssh_key_path: '/root/.ssh/id_rsa' });
+                const newSyncJob = ref({ name: '', source_node_id: '', source_dataset: '', dest_node_id: '', dest_dataset: '', schedule: '', compress: 'lz4', recursive: false, register_vm: false, vm_id: '', dest_vm_id: '', vm_type: 'qemu' });
+                const newUser = ref({ username: '', email: '', password: '', full_name: '', role: 'viewer' });
+                const sourceDatasets = ref([]);
+                const destDatasets = ref([]);
+                const selectedSchedule = ref('');
+                const destRootPool = ref('');
+                const destSubPath = ref('replica');
+                
+                // VM Replica Wizard
+                const sourceVMs = ref([]);
+                const destPools = ref([]);
+                const vmReplicaWizard = ref({
+                    active: false,
+                    sourceNodeId: '',
+                    destNodeId: '',
+                    selectedVM: null,
+                    disks: [],
+                    totalSize: '0 B',
+                    destPool: '',
+                    destSubfolder: 'replica',
+                    destStorage: '',  // Nome storage Proxmox destinazione
+                    destVmId: '',
+                    schedule: '',
+                    compress: 'lz4',
+                    registerVM: true
+                });
+                
+                // Computed per raggruppare job per VM
+                const vmGroups = computed(() => {
+                    const groups = {};
+                    syncJobs.value.filter(j => j.vm_group_id).forEach(job => {
+                        if (!groups[job.vm_group_id]) {
+                            groups[job.vm_group_id] = {
+                                vm_group_id: job.vm_group_id,
+                                vm_id: job.vm_id,
+                                vm_name: job.vm_name,
+                                dest_vm_id: job.dest_vm_id,
+                                source_node: job.source_node_name,
+                                dest_node: job.dest_node_name,
+                                schedule: job.schedule,
+                                register_vm: job.register_vm,
+                                jobs: []
+                            };
+                        }
+                        groups[job.vm_group_id].jobs.push(job);
+                    });
+                    return Object.values(groups);
+                });
+                
+                const singleJobs = computed(() => {
+                    return syncJobs.value.filter(j => !j.vm_group_id);
+                });
+                
+                // Computed per pool destinazione e suggerimento (legacy)
+                const destPools = computed(() => {
+                    const pools = new Set();
+                    destDatasets.value.forEach(ds => {
+                        const root = ds.name.split('/')[0];
+                        if (root) pools.add(root);
+                    });
+                    return Array.from(pools);
+                });
+                
+                const suggestedDestDataset = computed(() => {
+                    if (!newSyncJob.value.source_dataset || !destRootPool.value) return '';
+                    // Prendi il nome base del dataset sorgente (ultima parte del path)
+                    const sourceParts = newSyncJob.value.source_dataset.split('/');
+                    const baseName = sourceParts[sourceParts.length - 1] || newSyncJob.value.source_dataset;
+                    // Costruisci il path destinazione
+                    const subPath = destSubPath.value ? `/${destSubPath.value}` : '';
+                    return `${destRootPool.value}${subPath}/${baseName}`;
+                });
+                
+                // Computed
+                const isAdmin = computed(() => currentUser.value?.role === 'admin');
+                const canEdit = computed(() => ['admin', 'operator'].includes(currentUser.value?.role));
+                
+                // Methods
+                const showToast = (message, type = 'success') => {
+                    const id = Date.now();
+                    toasts.value.push({ id, message, type });
+                    setTimeout(() => toasts.value = toasts.value.filter(t => t.id !== id), 3000);
+                };
+                
+                const formatDate = d => d ? new Date(d).toLocaleString('it-IT') : '-';
+                
+                const getStatusClass = s => {
+                    if (!s) return 'badge-info';
+                    switch(s.toLowerCase()) {
+                        case 'success': return 'badge-success';
+                        case 'failed': return 'badge-danger';
+                        case 'running': case 'started': return 'badge-warning';
+                        default: return 'badge-info';
+                    }
+                };
+                
+                // Auth methods
+                const checkSetup = async () => {
+                    try {
+                        const res = await axios.get(`${API}/setup-required`);
+                        setupRequired.value = res.data.setup_required;
+                        if (!setupRequired.value) {
+                            const cfg = await axios.get(`${API}/auth/config`);
+                            authConfig.value = cfg.data;
+                            if (cfg.data.realms.length > 0) {
+                                loginForm.value.realm = cfg.data.realms.find(r => r.default)?.realm || cfg.data.realms[0].realm;
+                            }
+                        }
+                    } catch (e) { console.error(e); }
+                };
+                
+                const doSetup = async () => {
+                    loading.value = true;
+                    loginError.value = '';
+                    try {
+                        await axios.post(`${API}/auth/setup`, setupForm.value);
+                        showToast('Setup completato! Effettua il login.');
+                        setupRequired.value = false;
+                        await checkSetup();
+                    } catch (e) {
+                        loginError.value = e.response?.data?.detail || 'Errore setup';
+                    }
+                    loading.value = false;
+                };
+                
+                const doLogin = async () => {
+                    loading.value = true;
+                    loginError.value = '';
+                    try {
+                        const res = await axios.post(`${API}/auth/login`, loginForm.value);
+                        localStorage.setItem('access_token', res.data.access_token);
+                        localStorage.setItem('refresh_token', res.data.refresh_token);
+                        localStorage.setItem('user', JSON.stringify(res.data.user));
+                        currentUser.value = res.data.user;
+                        isAuthenticated.value = true;
+                        await loadAllData();
+                    } catch (e) {
+                        loginError.value = e.response?.data?.detail || 'Login fallito';
+                    }
+                    loading.value = false;
+                };
+                
+                const doLogout = async () => {
+                    try { await axios.post(`${API}/auth/logout`); } catch (e) {}
+                    localStorage.removeItem('access_token');
+                    localStorage.removeItem('refresh_token');
+                    localStorage.removeItem('user');
+                    isAuthenticated.value = false;
+                    currentUser.value = null;
+                };
+                
+                const checkAuth = () => {
+                    const token = localStorage.getItem('access_token');
+                    const user = localStorage.getItem('user');
+                    if (token && user) {
+                        isAuthenticated.value = true;
+                        currentUser.value = JSON.parse(user);
+                        return true;
+                    }
+                    return false;
+                };
+                
+                // Data loading
+                const loadAllData = async () => {
+                    await Promise.all([loadNodes(), loadSyncJobs(), loadLogs(), loadUsers()]);
+                };
+                
+                const loadNodes = async () => {
+                    try { nodes.value = (await axios.get(`${API}/nodes/`)).data; } catch (e) { showToast('Errore caricamento nodi', 'error'); }
+                };
+                
+                const loadSyncJobs = async () => {
+                    try { syncJobs.value = (await axios.get(`${API}/sync-jobs/`)).data; } catch (e) { showToast('Errore caricamento job', 'error'); }
+                };
+                
+                const loadLogs = async () => {
+                    try { allLogs.value = (await axios.get(`${API}/logs/?limit=100`)).data; recentLogs.value = allLogs.value.slice(0, 10); } catch (e) {}
+                };
+                
+                const showLogDetail = (log) => {
+                    selectedLog.value = log;
+                };
+                
+                const loadUsers = async () => {
+                    if (currentUser.value?.role !== 'admin') return;
+                    try { users.value = (await axios.get(`${API}/auth/users`)).data; } catch (e) {}
+                };
+                
+                const loadNodeDatasets = async () => {
+                    if (!selectedNodeId.value) { datasets.value = []; return; }
+                    loading.value = true;
+                    try { datasets.value = (await axios.get(`${API}/nodes/${selectedNodeId.value}/datasets?refresh=true`)).data; } catch (e) { showToast('Errore', 'error'); }
+                    loading.value = false;
+                };
+                
+                const loadNodeSnapshots = async () => {
+                    if (!selectedNodeId.value) return;
+                    loading.value = true;
+                    try { snapshots.value = (await axios.get(`${API}/snapshots/node/${selectedNodeId.value}`)).data; } catch (e) {}
+                    loading.value = false;
+                };
+                
+                const loadNodeVms = async () => {
+                    if (!selectedVmNodeId.value) { nodeVms.value = []; return; }
+                    loading.value = true;
+                    try { nodeVms.value = (await axios.get(`${API}/vms/node/${selectedVmNodeId.value}`)).data; } catch (e) {}
+                    loading.value = false;
+                };
+                
+                // ========== VM Replica Wizard Functions ==========
+                const loadSourceVMs = async () => {
+                    if (!vmReplicaWizard.value.sourceNodeId) { sourceVMs.value = []; return; }
+                    loading.value = true;
+                    try {
+                        sourceVMs.value = (await axios.get(`${API}/vms/node/${vmReplicaWizard.value.sourceNodeId}`)).data;
+                    } catch (e) { showToast('Errore caricamento VM', 'error'); }
+                    loading.value = false;
+                };
+                
+                const loadDestPools = async () => {
+                    if (!vmReplicaWizard.value.destNodeId) { destPools.value = []; return; }
+                    try {
+                        const res = await axios.get(`${API}/sync-jobs/nodes/${vmReplicaWizard.value.destNodeId}/pools`);
+                        destPools.value = res.data.pools || [];
+                    } catch (e) { 
+                        // Fallback: carica dataset e estrai pool
+                        try {
+                            const ds = (await axios.get(`${API}/nodes/${vmReplicaWizard.value.destNodeId}/datasets`)).data;
+                            const pools = new Set();
+                            ds.forEach(d => pools.add(d.name.split('/')[0]));
+                            destPools.value = Array.from(pools);
+                        } catch (e2) {}
+                    }
+                };
+                
+                const selectVMForReplica = async (vm) => {
+                    vmReplicaWizard.value.active = true;
+                    vmReplicaWizard.value.selectedVM = vm;
+                    vmReplicaWizard.value.disks = [];
+                    vmReplicaWizard.value.destVmId = '';
+                    
+                    loading.value = true;
+                    try {
+                        const res = await axios.get(`${API}/vms/node/${vmReplicaWizard.value.sourceNodeId}/vm/${vm.vmid}/disks?vm_type=${vm.type}`);
+                        vmReplicaWizard.value.disks = res.data.disks.map(d => ({ ...d, selected: !!d.dataset }));
+                        vmReplicaWizard.value.totalSize = res.data.total_size;
+                    } catch (e) { 
+                        showToast('Errore caricamento dischi: ' + (e.response?.data?.detail || e.message), 'error'); 
+                    }
+                    loading.value = false;
+                };
+                
+                const cancelVMReplica = () => {
+                    vmReplicaWizard.value.active = false;
+                    vmReplicaWizard.value.selectedVM = null;
+                    vmReplicaWizard.value.disks = [];
+                };
+                
+                const createVMReplica = async () => {
+                    const w = vmReplicaWizard.value;
+                    if (!w.destPool) { showToast('Seleziona pool destinazione', 'error'); return; }
+                    
+                    const selectedDisks = w.disks.filter(d => d.selected && d.dataset);
+                    if (selectedDisks.length === 0) { showToast('Seleziona almeno un disco', 'error'); return; }
+                    
+                    loading.value = true;
+                    try {
+                        const res = await axios.post(`${API}/sync-jobs/vm-replica`, {
+                            vm_id: w.selectedVM.vmid,
+                            vm_type: w.selectedVM.type,
+                            vm_name: w.selectedVM.name,
+                            source_node_id: parseInt(w.sourceNodeId),
+                            dest_node_id: parseInt(w.destNodeId),
+                            dest_pool: w.destPool,
+                            dest_subfolder: w.destSubfolder,
+                            dest_storage: w.destStorage || w.destSubfolder || null,
+                            dest_vm_id: w.destVmId ? parseInt(w.destVmId) : null,
+                            schedule: w.schedule || null,
+                            compress: w.compress,
+                            register_vm: w.registerVM,
+                            disks: selectedDisks
+                        });
+                        
+                        showToast(`✅ Creati ${res.data.jobs_created} job per VM ${w.selectedVM.vmid}`, 'success');
+                        cancelVMReplica();
+                        await loadSyncJobs();
+                    } catch (e) {
+                        showToast('Errore: ' + (e.response?.data?.detail || e.message), 'error');
+                    }
+                    loading.value = false;
+                };
+                
+                const runVMGroup = async (groupId) => {
+                    loading.value = true;
+                    try {
+                        const res = await axios.post(`${API}/sync-jobs/vm-group/${groupId}/run`);
+                        showToast(`Avviati ${res.data.jobs_started} job`, 'success');
+                        setTimeout(() => loadSyncJobs(), 2000);
+                    } catch (e) { showToast('Errore avvio gruppo', 'error'); }
+                    loading.value = false;
+                };
+                
+                const deleteVMGroup = async (groupId) => {
+                    if (!confirm('Eliminare tutti i job di replica per questa VM?')) return;
+                    loading.value = true;
+                    try {
+                        const res = await axios.delete(`${API}/sync-jobs/vm-group/${groupId}`);
+                        showToast(`Eliminati ${res.data.jobs_deleted} job`, 'success');
+                        await loadSyncJobs();
+                    } catch (e) { showToast('Errore eliminazione', 'error'); }
+                    loading.value = false;
+                };
+                
+                const registerVMGroup = async (group) => {
+                    const job = group.jobs[0];
+                    if (!job) return;
+                    if (!confirm(`Registrare VM ${group.dest_vm_id || group.vm_id} su ${group.dest_node}?`)) return;
+                    loading.value = true;
+                    try {
+                        const res = await axios.post(`${API}/sync-jobs/${job.id}/register-vm`);
+                        showToast(res.data.message, 'success');
+                    } catch (e) { showToast(e.response?.data?.detail || 'Errore registrazione', 'error'); }
+                    loading.value = false;
+                };
+                
+                const loadSourceDatasets = async () => {
+                    if (!newSyncJob.value.source_node_id) { sourceDatasets.value = []; return; }
+                    try { 
+                        sourceDatasets.value = (await axios.get(`${API}/nodes/${newSyncJob.value.source_node_id}/datasets`)).data;
+                    } catch (e) { sourceDatasets.value = []; }
+                };
+                
+                const loadDestDatasets = async () => {
+                    if (!newSyncJob.value.dest_node_id) { destDatasets.value = []; return; }
+                    try { 
+                        destDatasets.value = (await axios.get(`${API}/nodes/${newSyncJob.value.dest_node_id}/datasets`)).data;
+                    } catch (e) { destDatasets.value = []; }
+                };
+                
+                const onDestNodeChange = async () => {
+                    await loadDestDatasets();
+                    // Auto-seleziona il primo pool se disponibile
+                    if (destPools.value.length > 0) {
+                        destRootPool.value = destPools.value[0];
+                        updateDestDataset();
+                    }
+                };
+                
+                const updateDestDataset = () => {
+                    // Aggiorna automaticamente il dataset destinazione
+                    if (suggestedDestDataset.value) {
+                        newSyncJob.value.dest_dataset = suggestedDestDataset.value;
+                    }
+                };
+                
+                const applySchedule = () => {
+                    if (selectedSchedule.value && selectedSchedule.value !== 'custom') {
+                        newSyncJob.value.schedule = selectedSchedule.value;
+                    }
+                };
+                
+                // CRUD operations
+                const createNode = async () => {
+                    loading.value = true;
+                    try {
+                        await axios.post(`${API}/nodes/`, newNode.value);
+                        showToast('Nodo creato');
+                        showNodeModal.value = false;
+                        newNode.value = { name: '', hostname: '', ssh_port: 22, ssh_user: 'root', ssh_key_path: '/root/.ssh/id_rsa' };
+                        await loadNodes();
+                    } catch (e) { showToast(e.response?.data?.detail || 'Errore', 'error'); }
+                    loading.value = false;
+                };
+                
+                const testNode = async (node) => {
+                    loading.value = true;
+                    try {
+                        const res = await axios.post(`${API}/nodes/${node.id}/test`);
+                        showToast(res.data.success ? 'Connessione OK' : 'Connessione fallita', res.data.success ? 'success' : 'error');
+                        await loadNodes();
+                    } catch (e) { showToast('Errore', 'error'); }
+                    loading.value = false;
+                };
+                
+                const installSanoid = async (node) => {
+                    loading.value = true;
+                    showToast('Installazione Sanoid...');
+                    try {
+                        await axios.post(`${API}/nodes/${node.id}/install-sanoid`);
+                        showToast('Sanoid installato');
+                        await loadNodes();
+                    } catch (e) { showToast('Errore', 'error'); }
+                    loading.value = false;
+                };
+                
+                const deleteNode = async (node) => {
+                    if (!confirm(`Eliminare ${node.name}?`)) return;
+                    try { await axios.delete(`${API}/nodes/${node.id}`); showToast('Eliminato'); await loadNodes(); } catch (e) { showToast('Errore', 'error'); }
+                };
+                
+                const refreshNodeDatasets = async (node) => {
+                    loading.value = true;
+                    try { await axios.get(`${API}/nodes/${node.id}/datasets?refresh=true`); showToast('Aggiornato'); } catch (e) {}
+                    loading.value = false;
+                };
+                
+                const updateDatasetConfig = async (ds) => {
+                    try { await axios.put(`${API}/snapshots/dataset/${ds.id}/config`, ds); } catch (e) { showToast('Errore', 'error'); }
+                };
+                
+                const applySanoidConfig = async () => {
+                    if (!selectedNodeId.value) return;
+                    loading.value = true;
+                    try { await axios.post(`${API}/snapshots/node/${selectedNodeId.value}/apply-config`); showToast('Config applicata'); } catch (e) { showToast('Errore', 'error'); }
+                    loading.value = false;
+                };
+                
+                const createSyncJob = async () => {
+                    loading.value = true;
+                    try {
+                        if (editingSyncJobId.value) {
+                            await axios.put(`${API}/sync-jobs/${editingSyncJobId.value}`, newSyncJob.value);
+                            showToast('Job aggiornato');
+                        } else {
+                            await axios.post(`${API}/sync-jobs/`, newSyncJob.value);
+                            showToast('Job creato');
+                        }
+                        showSyncJobModal.value = false;
+                        editingSyncJobId.value = null;
+                        newSyncJob.value = { name: '', source_node_id: '', source_dataset: '', dest_node_id: '', dest_dataset: '', schedule: '', compress: 'lz4', recursive: false, mbuffer_size: '128M', no_sync_snap: false, force_delete: false, extra_args: '', register_vm: false, vm_id: '', dest_vm_id: '', vm_type: 'qemu' };
+                        sourceDatasets.value = [];
+                        destDatasets.value = [];
+                        selectedSchedule.value = '';
+                        await loadSyncJobs();
+                    } catch (e) { showToast(e.response?.data?.detail || 'Errore', 'error'); }
+                    loading.value = false;
+                };
+                
+                const runSyncJob = async (job) => {
+                    try { await axios.post(`${API}/sync-jobs/${job.id}/run`); showToast('Job avviato'); await loadSyncJobs(); } catch (e) { showToast('Errore', 'error'); }
+                };
+                
+                const toggleSyncJob = async (job) => {
+                    try { await axios.post(`${API}/sync-jobs/${job.id}/toggle`); await loadSyncJobs(); } catch (e) {}
+                };
+                
+                const editSyncJob = async (job) => {
+                    editingSyncJobId.value = job.id;
+                    newSyncJob.value = {
+                        name: job.name,
+                        source_node_id: job.source_node_id,
+                        source_dataset: job.source_dataset,
+                        dest_node_id: job.dest_node_id,
+                        dest_dataset: job.dest_dataset,
+                        schedule: job.schedule || '',
+                        compress: job.compress || 'lz4',
+                        recursive: job.recursive || false,
+                        mbuffer_size: job.mbuffer_size || '128M',
+                        no_sync_snap: job.no_sync_snap || false,
+                        force_delete: job.force_delete || false,
+                        extra_args: job.extra_args || '',
+                        register_vm: job.register_vm || false,
+                        vm_id: job.vm_id || '',
+                        dest_vm_id: job.dest_vm_id || '',
+                        vm_type: job.vm_type || 'qemu'
+                    };
+                    await loadSourceDatasets();
+                    await loadDestDatasets();
+                    showSyncJobModal.value = true;
+                };
+                
+                const registerJobVM = async (job) => {
+                    if (!confirm(`Registrare VM ${job.vm_id} su ${job.dest_node_name}?\n\nQuesto copierà la configurazione dalla sorgente e registrerà la VM sulla destinazione.`)) return;
+                    loading.value = true;
+                    try {
+                        const res = await axios.post(`${API}/sync-jobs/${job.id}/register-vm`);
+                        showToast(res.data.message, 'success');
+                    } catch (e) {
+                        showToast(e.response?.data?.detail || 'Errore registrazione VM', 'error');
+                    }
+                    loading.value = false;
+                };
+                
+                const deleteSyncJob = async (job) => {
+                    if (!confirm(`Eliminare ${job.name}?`)) return;
+                    try { await axios.delete(`${API}/sync-jobs/${job.id}`); showToast('Eliminato'); await loadSyncJobs(); } catch (e) {}
+                };
+                
+                const getVmDatasets = async (vm) => {
+                    try {
+                        const res = await axios.get(`${API}/vms/node/${selectedVmNodeId.value}/vm/${vm.vmid}/datasets?vm_type=${vm.type}`);
+                        alert(`Dataset VM ${vm.vmid}:\n${res.data.datasets.join('\n') || 'Nessuno'}`);
+                    } catch (e) {}
+                };
+                
+                // User management
+                const editUser = (u) => {
+                    editingUser.value = u;
+                    newUser.value = { ...u };
+                    showUserModal.value = true;
+                };
+                
+                const saveUser = async () => {
+                    loading.value = true;
+                    try {
+                        if (editingUser.value) {
+                            await axios.put(`${API}/auth/users/${editingUser.value.id}`, newUser.value);
+                        } else {
+                            await axios.post(`${API}/auth/users`, newUser.value);
+                        }
+                        showToast('Salvato');
+                        showUserModal.value = false;
+                        editingUser.value = null;
+                        newUser.value = { username: '', email: '', password: '', full_name: '', role: 'viewer' };
+                        await loadUsers();
+                    } catch (e) { showToast(e.response?.data?.detail || 'Errore', 'error'); }
+                    loading.value = false;
+                };
+                
+                const deleteUser = async (u) => {
+                    if (!confirm(`Eliminare ${u.username}?`)) return;
+                    try { await axios.delete(`${API}/auth/users/${u.id}`); showToast('Eliminato'); await loadUsers(); } catch (e) { showToast('Errore', 'error'); }
+                };
+                
+                // Settings
+                const saveSettings = async () => {
+                    loading.value = true;
+                    try {
+                        for (const [k, v] of Object.entries(settings.value)) {
+                            await axios.put(`${API}/settings/system/${k}`, { value: String(v) });
+                        }
+                        showToast('Salvato');
+                    } catch (e) { showToast('Errore', 'error'); }
+                    loading.value = false;
+                };
+                
+                const saveAuthSettings = async () => {
+                    loading.value = true;
+                    try { await axios.put(`${API}/settings/auth/config`, authSettings.value); showToast('Salvato'); } catch (e) { showToast('Errore', 'error'); }
+                    loading.value = false;
+                };
+                
+                const saveNotifSettings = async () => {
+                    loading.value = true;
+                    try { await axios.put(`${API}/settings/notifications`, notifSettings.value); showToast('Salvato'); } catch (e) { showToast('Errore', 'error'); }
+                    loading.value = false;
+                };
+                
+                // Init
+                onMounted(async () => {
+                    if (checkAuth()) {
+                        await loadAllData();
+                    } else {
+                        await checkSetup();
+                    }
+                });
+                
+                return {
+                    isAuthenticated, setupRequired, currentUser, authConfig, loginForm, setupForm, loginError,
+                    currentPage, settingsTab, loading, toasts,
+                    nodes, syncJobs, recentLogs, allLogs, datasets, snapshots, nodeVms, users,
+                    selectedNodeId, selectedVmNodeId, selectedLog,
+                    sourceDatasets, destDatasets, selectedSchedule,
+                    destRootPool, destSubPath, destPools, suggestedDestDataset,
+                    // VM Replica
+                    sourceVMs, vmReplicaWizard, vmGroups, singleJobs,
+                    settings, authSettings, notifSettings,
+                    showNodeModal, showSyncJobModal, editingSyncJobId, showUserModal, editingUser,
+                    newNode, newSyncJob, newUser,
+                    isAdmin, canEdit,
+                    showToast, formatDate, getStatusClass,
+                    doSetup, doLogin, doLogout,
+                    loadNodes, loadSyncJobs, loadLogs, loadNodeDatasets, loadNodeSnapshots, loadNodeVms,
+                    loadSourceDatasets, loadDestDatasets, onDestNodeChange, updateDestDataset, applySchedule, showLogDetail,
+                    // VM Replica functions
+                    loadSourceVMs, loadDestPools, selectVMForReplica, cancelVMReplica, createVMReplica,
+                    runVMGroup, deleteVMGroup, registerVMGroup,
+                    createNode, testNode, installSanoid, deleteNode, refreshNodeDatasets,
+                    updateDatasetConfig, applySanoidConfig,
+                    createSyncJob, runSyncJob, toggleSyncJob, deleteSyncJob, editSyncJob, registerJobVM,
+                    getVmDatasets,
+                    editUser, saveUser, deleteUser,
+                    saveSettings, saveAuthSettings, saveNotifSettings
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
+
