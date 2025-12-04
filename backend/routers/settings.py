@@ -442,6 +442,47 @@ async def test_notification(
     raise HTTPException(status_code=400, detail="Canale non valido")
 
 
+@router.post("/notifications/send-daily-summary")
+async def send_daily_summary_now(
+    request: Request,
+    user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Invia immediatamente il riepilogo giornaliero"""
+    from services.notification_service import notification_service
+    
+    config = db.query(NotificationConfig).first()
+    if not config:
+        raise HTTPException(status_code=400, detail="Notifiche non configurate")
+    
+    # Verifica che almeno un canale sia abilitato
+    if not (config.smtp_enabled or config.webhook_enabled or config.telegram_enabled):
+        raise HTTPException(status_code=400, detail="Nessun canale di notifica abilitato")
+    
+    try:
+        result = await notification_service.send_daily_summary()
+        
+        if result.get("sent"):
+            log_audit(
+                db, user.id, "daily_summary_sent", "notifications",
+                details=f"Channels: {list(result.get('channels', {}).keys())}",
+                ip_address=request.client.host if request.client else None
+            )
+            return {
+                "success": True,
+                "message": "Riepilogo giornaliero inviato",
+                "channels": result.get("channels", {}),
+                "summary": result.get("summary", {})
+            }
+        else:
+            return {
+                "success": False,
+                "message": f"Riepilogo non inviato: {result.get('reason', 'unknown')}"
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Errore invio riepilogo: {str(e)}")
+
+
 # ============== Categories ==============
 
 @router.get("/categories")

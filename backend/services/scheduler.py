@@ -1,17 +1,19 @@
 """
 Scheduler Service - Gestione job schedulati
+Con supporto notifiche e riepilogo giornaliero
 """
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, time
 from typing import Dict, Optional, Callable
 import logging
 from croniter import croniter
 from sqlalchemy.orm import Session
 
-from database import SessionLocal, SyncJob, JobLog, Node
+from database import SessionLocal, SyncJob, JobLog, Node, NotificationConfig, SystemConfig
 from services.syncoid_service import syncoid_service
 from services.proxmox_service import proxmox_service
+from services.notification_service import notification_service
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +25,9 @@ class SchedulerService:
         self._running = False
         self._task: Optional[asyncio.Task] = None
         self._jobs: Dict[int, datetime] = {}  # job_id -> next_run
+        self._last_daily_summary: Optional[datetime] = None
+        self._daily_summary_hour: int = 8  # Ora predefinita: 08:00 UTC
+        self._daily_summary_enabled: bool = True
     
     async def start(self):
         """Avvia lo scheduler"""
@@ -32,6 +37,9 @@ class SchedulerService:
         self._running = True
         self._task = asyncio.create_task(self._scheduler_loop())
         logger.info("Scheduler avviato")
+        
+        # Carica configurazione orario riepilogo
+        self._load_daily_summary_config()
     
     async def stop(self):
         """Ferma lo scheduler"""
@@ -44,15 +52,78 @@ class SchedulerService:
                 pass
         logger.info("Scheduler fermato")
     
+    def _load_daily_summary_config(self):
+        """Carica la configurazione dell'orario del riepilogo giornaliero"""
+        db = SessionLocal()
+        try:
+            # Orario
+            hour_config = db.query(SystemConfig).filter(
+                SystemConfig.key == "daily_summary_hour"
+            ).first()
+            if hour_config and hour_config.value:
+                try:
+                    self._daily_summary_hour = int(hour_config.value)
+                except ValueError:
+                    pass
+            
+            # Abilitato/Disabilitato
+            enabled_config = db.query(SystemConfig).filter(
+                SystemConfig.key == "daily_summary_enabled"
+            ).first()
+            self._daily_summary_enabled = True
+            if enabled_config and enabled_config.value:
+                self._daily_summary_enabled = enabled_config.value.lower() in ("true", "1", "yes")
+            
+            if self._daily_summary_enabled:
+                logger.info(f"Riepilogo giornaliero schedulato alle ore {self._daily_summary_hour}:00 UTC")
+            else:
+                logger.info("Riepilogo giornaliero disabilitato")
+        finally:
+            db.close()
+    
     async def _scheduler_loop(self):
         """Loop principale dello scheduler"""
         while self._running:
             try:
                 await self._check_and_run_jobs()
+                await self._check_daily_summary()
                 await asyncio.sleep(60)  # Check ogni minuto
             except Exception as e:
                 logger.error(f"Errore nello scheduler: {e}")
                 await asyncio.sleep(60)
+    
+    async def _check_daily_summary(self):
+        """Verifica se è ora di inviare il riepilogo giornaliero"""
+        # Verifica se abilitato
+        if not self._daily_summary_enabled:
+            return
+        
+        now = datetime.utcnow()
+        current_hour = now.hour
+        
+        # Verifica se è l'ora giusta e se non è già stato inviato oggi
+        if current_hour == self._daily_summary_hour:
+            # Controlla se già inviato oggi
+            if self._last_daily_summary:
+                if self._last_daily_summary.date() == now.date():
+                    return  # Già inviato oggi
+            
+            # Ricarica configurazione (potrebbe essere cambiata)
+            self._load_daily_summary_config()
+            if not self._daily_summary_enabled:
+                return
+            
+            # Invia riepilogo
+            logger.info("Invio riepilogo giornaliero...")
+            try:
+                result = await notification_service.send_daily_summary()
+                if result.get("sent"):
+                    logger.info(f"Riepilogo giornaliero inviato: {result.get('channels', {})}")
+                else:
+                    logger.debug(f"Riepilogo non inviato: {result.get('reason')}")
+                self._last_daily_summary = now
+            except Exception as e:
+                logger.error(f"Errore invio riepilogo giornaliero: {e}")
     
     async def _check_and_run_jobs(self):
         """Verifica e esegue i job schedulati"""
@@ -176,6 +247,23 @@ class SchedulerService:
             log_entry.completed_at = datetime.utcnow()
             
             db.commit()
+            
+            # Invia notifica job completato
+            # Per job schedulati: max 1 notifica successo al giorno, fallimenti sempre notificati
+            try:
+                await notification_service.send_job_notification(
+                    job_name=job.name,
+                    status="success" if result["success"] else "failed",
+                    source=f"{source_node.name}:{job.source_dataset}",
+                    destination=f"{dest_node.name}:{job.dest_dataset}",
+                    duration=result["duration"],
+                    error=result.get("error") if not result["success"] else None,
+                    details=f"Trasferito: {result.get('transferred', 'N/A')}" if result["success"] else None,
+                    job_id=job_id,
+                    is_scheduled=True  # Job eseguito dallo scheduler = ricorrente
+                )
+            except Exception as notify_err:
+                logger.warning(f"Errore invio notifica per job {job_id}: {notify_err}")
             
         except Exception as e:
             logger.error(f"Errore esecuzione job {job_id}: {e}")

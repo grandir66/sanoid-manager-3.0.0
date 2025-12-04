@@ -26,14 +26,14 @@ python-dotenv>=1.0.0
 python-jose[cryptography]>=3.3.0
 bcrypt>=4.0.0
 
-# HTTP Client (per Proxmox API)
+# HTTP Client (per Proxmox API e Notifiche)
 aiohttp>=3.9.0
+httpx>=0.25.0
 
 # Email (optional)
 aiosmtplib>=3.0.0
 
 # Testing
-httpx>=0.25.0
 pytest>=7.4.0
 pytest-asyncio>=0.21.0
 pytest-cov>=4.1.0

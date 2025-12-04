@@ -417,6 +417,10 @@ def init_default_config(db_session):
         ("log_retention_days", "30", "int", "retention", "Giorni retention log"),
         ("audit_retention_days", "90", "int", "retention", "Giorni retention audit log"),
         
+        # Notifiche
+        ("daily_summary_hour", "8", "int", "notifications", "Ora invio riepilogo giornaliero (0-23, UTC)"),
+        ("daily_summary_enabled", "true", "bool", "notifications", "Abilita riepilogo giornaliero"),
+        
         # UI
         ("ui_theme", "dark", "string", "ui", "Tema interfaccia"),
         ("ui_refresh_interval", "30", "int", "ui", "Intervallo refresh in secondi"),

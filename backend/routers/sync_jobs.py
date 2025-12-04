@@ -17,60 +17,37 @@ from routers.auth import get_current_user, require_operator, require_admin, log_
 router = APIRouter()
 
 
-# ============== Helper Function per notifiche email ==============
+# ============== Helper Function per notifiche ==============
 
-async def send_job_email_notification(
-    db_session,
+async def send_job_notification_helper(
+    job_id: int,
     job_name: str,
     status: str,
     source: str,
     destination: str,
     duration: int = None,
     error: str = None,
-    details: str = None
+    details: str = None,
+    is_scheduled: bool = False
 ):
-    """Invia notifica email per un job di replica se configurato."""
-    from database import NotificationConfig
-    from services.email_service import email_service
+    """
+    Invia notifica per un job di replica usando il notification_service centralizzato.
     
-    # Carica configurazione notifiche
-    config = db_session.query(NotificationConfig).first()
-    if not config or not config.smtp_enabled:
-        return
+    Per job manuali (is_scheduled=False): sempre notifica
+    Per job schedulati (is_scheduled=True): max 1 notifica successo al giorno
+    """
+    from services.notification_service import notification_service
     
-    # Verifica se notificare per questo status
-    if status == "success" and not config.notify_on_success:
-        return
-    if status == "failed" and not config.notify_on_failure:
-        return
-    if status == "warning" and not config.notify_on_warning:
-        return
-    
-    # Verifica configurazione SMTP
-    if not config.smtp_host or not config.smtp_to:
-        return
-    
-    # Configura email service
-    email_service.configure(
-        host=config.smtp_host,
-        port=config.smtp_port or 587,
-        user=config.smtp_user,
-        password=config.smtp_password,
-        from_addr=config.smtp_from,
-        to_addrs=config.smtp_to,
-        subject_prefix=config.smtp_subject_prefix or "[Sanoid Manager]",
-        use_tls=config.smtp_tls
-    )
-    
-    # Invia notifica
-    email_service.send_job_notification(
+    await notification_service.send_job_notification(
         job_name=job_name,
         status=status,
         source=source,
         destination=destination,
         duration=duration,
         error=error,
-        details=details[:1000] if details else None  # Limita dettagli
+        details=details[:1000] if details else None,
+        job_id=job_id,
+        is_scheduled=is_scheduled
     )
 
 
@@ -239,22 +216,23 @@ async def execute_sync_job_task(job_id: int, triggered_by_user_id: int = None):
         
         db_session.commit()
         
-        # Invia notifica email se configurata
+        # Invia notifica se configurata (job manuale = is_scheduled=False)
         try:
-            await send_job_email_notification(
-                db_session=db_session,
+            await send_job_notification_helper(
+                job_id=job_id,
                 job_name=job.name,
                 status="success" if result["success"] else "failed",
                 source=f"{source_node.name}:{job.source_dataset}",
                 destination=f"{dest_node.name}:{job.dest_dataset}",
                 duration=result["duration"],
                 error=result.get("error") if not result["success"] else None,
-                details=result.get("output")
+                details=result.get("output"),
+                is_scheduled=False  # Job manuale: sempre notifica
             )
-        except Exception as email_err:
-            # Non bloccare se l'email fallisce
+        except Exception as notify_err:
+            # Non bloccare se la notifica fallisce
             import logging
-            logging.getLogger(__name__).warning(f"Errore invio notifica email: {email_err}")
+            logging.getLogger(__name__).warning(f"Errore invio notifica: {notify_err}")
         
     except Exception as e:
         if log_entry:
@@ -304,7 +282,9 @@ class SyncJobCreate(BaseModel):
 
 class SyncJobUpdate(BaseModel):
     name: Optional[str] = None
+    source_node_id: Optional[int] = None  # Permetti cambio nodo sorgente
     source_dataset: Optional[str] = None
+    dest_node_id: Optional[int] = None  # Permetti cambio nodo destinazione
     dest_dataset: Optional[str] = None
     recursive: Optional[bool] = None
     compress: Optional[str] = None
@@ -319,8 +299,11 @@ class SyncJobUpdate(BaseModel):
     dest_vm_id: Optional[int] = None
     vm_type: Optional[str] = None
     vm_name: Optional[str] = None
+    source_storage: Optional[str] = None  # Storage Proxmox sorgente
+    dest_storage: Optional[str] = None  # Storage Proxmox destinazione
     retry_on_failure: Optional[bool] = None
     max_retries: Optional[int] = None
+    retry_delay_minutes: Optional[int] = None
 
 
 class SyncJobResponse(BaseModel):
@@ -724,7 +707,16 @@ async def update_sync_job(
     user: User = Depends(require_operator),
     db: Session = Depends(get_db)
 ):
-    """Aggiorna un job"""
+    """
+    Aggiorna un job di replica.
+    
+    Permette di modificare tutti i parametri inclusi:
+    - Nodi sorgente/destinazione
+    - Dataset
+    - Schedule
+    - Opzioni di compressione e sincronizzazione
+    - Configurazione VM
+    """
     job = db.query(SyncJob).filter(SyncJob.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job non trovato")
@@ -732,13 +724,44 @@ async def update_sync_job(
     if not check_job_access(user, job, db):
         raise HTTPException(status_code=403, detail="Accesso negato")
     
-    for key, value in update.dict(exclude_unset=True).items():
+    update_data = update.dict(exclude_unset=True)
+    changes = []
+    
+    # Valida e verifica accesso ai nuovi nodi se cambiati
+    if "source_node_id" in update_data and update_data["source_node_id"] != job.source_node_id:
+        new_source = db.query(Node).filter(Node.id == update_data["source_node_id"]).first()
+        if not new_source:
+            raise HTTPException(status_code=400, detail="Nuovo nodo sorgente non trovato")
+        if user.allowed_nodes is not None and update_data["source_node_id"] not in user.allowed_nodes:
+            raise HTTPException(status_code=403, detail="Accesso negato al nuovo nodo sorgente")
+        changes.append(f"source_node: {job.source_node_id} -> {update_data['source_node_id']}")
+    
+    if "dest_node_id" in update_data and update_data["dest_node_id"] != job.dest_node_id:
+        new_dest = db.query(Node).filter(Node.id == update_data["dest_node_id"]).first()
+        if not new_dest:
+            raise HTTPException(status_code=400, detail="Nuovo nodo destinazione non trovato")
+        if user.allowed_nodes is not None and update_data["dest_node_id"] not in user.allowed_nodes:
+            raise HTTPException(status_code=403, detail="Accesso negato al nuovo nodo destinazione")
+        changes.append(f"dest_node: {job.dest_node_id} -> {update_data['dest_node_id']}")
+    
+    # Traccia altre modifiche importanti
+    if "schedule" in update_data and update_data["schedule"] != job.schedule:
+        changes.append(f"schedule: '{job.schedule}' -> '{update_data['schedule']}'")
+    if "is_active" in update_data and update_data["is_active"] != job.is_active:
+        changes.append(f"is_active: {job.is_active} -> {update_data['is_active']}")
+    if "source_dataset" in update_data and update_data["source_dataset"] != job.source_dataset:
+        changes.append(f"source_dataset changed")
+    if "dest_dataset" in update_data and update_data["dest_dataset"] != job.dest_dataset:
+        changes.append(f"dest_dataset changed")
+    
+    # Applica gli aggiornamenti
+    for key, value in update_data.items():
         setattr(job, key, value)
     
     log_audit(
         db, user.id, "sync_job_updated", "sync_job",
         resource_id=job_id,
-        details=f"Updated job: {job.name}",
+        details=f"Updated job '{job.name}': {', '.join(changes) if changes else 'minor changes'}",
         ip_address=request.client.host if request.client else None
     )
     
@@ -746,7 +769,10 @@ async def update_sync_job(
     db.refresh(job)
     
     # Aggiorna scheduler
-    scheduler_service.update_job_schedule(job.id, job.schedule)
+    if job.is_active and job.schedule:
+        scheduler_service.update_job_schedule(job.id, job.schedule)
+    else:
+        scheduler_service.remove_job(job.id)
     
     return job
 

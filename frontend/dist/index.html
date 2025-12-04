@@ -1188,13 +1188,17 @@
                             
                             <!-- Mini tabella dischi -->
                             <table style="width: 100%; font-size: 0.85rem;">
-                                <thead><tr><th>Disco</th><th>Dataset</th><th>Stato</th><th>Ultimo Run</th></tr></thead>
+                                <thead><tr><th>Disco</th><th>Dataset</th><th>Stato</th><th>Ultimo Run</th><th>Azioni</th></tr></thead>
                                 <tbody>
                                     <tr v-for="job in group.jobs" :key="job.id">
                                         <td>{{ job.disk_name || 'disk' }}</td>
                                         <td style="font-family: 'JetBrains Mono', monospace;">{{ job.source_dataset.split('/').pop() }}</td>
                                         <td><span class="badge" :class="getStatusClass(job.last_status)">{{ job.last_status || 'N/A' }}</span></td>
                                         <td>{{ job.last_run ? formatDate(job.last_run) : '-' }}</td>
+                                        <td>
+                                            <button class="btn btn-primary btn-sm" @click="runSyncJob(job)" :disabled="loading" title="Esegui" style="padding: 2px 6px;">▶</button>
+                                            <button class="btn btn-secondary btn-sm" @click="editSyncJob(job)" :disabled="loading" title="Modifica" style="padding: 2px 6px;">✏️</button>
+                                        </td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -1214,8 +1218,9 @@
                                         <td>{{ job.dest_dataset }}</td>
                                         <td><span class="badge" :class="getStatusClass(job.last_status)">{{ job.last_status || 'N/A' }}</span></td>
                                         <td>
-                                            <button class="btn btn-primary btn-sm" @click="runSyncJob(job)" :disabled="loading">▶</button>
-                                            <button class="btn btn-danger btn-sm" @click="deleteSyncJob(job)" :disabled="loading">✕</button>
+                                            <button class="btn btn-primary btn-sm" @click="runSyncJob(job)" :disabled="loading" title="Esegui">▶</button>
+                                            <button class="btn btn-secondary btn-sm" @click="editSyncJob(job)" :disabled="loading" title="Modifica">✏️</button>
+                                            <button class="btn btn-danger btn-sm" @click="deleteSyncJob(job)" :disabled="loading" title="Elimina">✕</button>
                                         </td>
                                     </tr>
                                 </tbody>
@@ -1477,6 +1482,33 @@
                         
                         <div style="margin-top: 20px;">
                             <button class="btn btn-primary" @click="saveNotifSettings" :disabled="loading">💾 Salva Configurazione</button>
+                        </div>
+                        
+                        <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid var(--border-color);">
+                            <h4 style="color: var(--accent-secondary); margin-bottom: 12px;">📊 Riepilogo Giornaliero</h4>
+                            <p style="color: var(--text-secondary); margin-bottom: 16px; font-size: 14px;">
+                                Ricevi ogni giorno un riepilogo con lo stato di tutti i job di replica configurati.
+                            </p>
+                            <div class="grid-2" style="margin-bottom: 16px;">
+                                <div class="form-group">
+                                    <label class="form-label">Orario invio (UTC)</label>
+                                    <select class="form-input" v-model="dailySummaryHour">
+                                        <option v-for="h in 24" :key="h-1" :value="h-1">{{ String(h-1).padStart(2, '0') }}:00</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">&nbsp;</label>
+                                    <button class="btn btn-secondary" @click="saveDailySummaryHour" :disabled="loading" style="width: 100%;">
+                                        💾 Salva Orario
+                                    </button>
+                                </div>
+                            </div>
+                            <button class="btn btn-primary" @click="sendDailySummary" :disabled="loading || !notifSettings.smtp_enabled" style="width: 100%;">
+                                📧 Invia Riepilogo Ora
+                            </button>
+                            <small v-if="!notifSettings.smtp_enabled" style="display: block; margin-top: 8px; color: var(--accent-warning);">
+                                ⚠️ Abilita le notifiche email per usare questa funzione
+                            </small>
                         </div>
                     </div>
             </div>
@@ -2114,6 +2146,7 @@
                     notify_on_success: false,
                     notify_on_warning: true
                 });
+                const dailySummaryHour = ref(8);
                 
                 // Modals
                 const showNodeModal = ref(false);
@@ -2348,6 +2381,11 @@
                     try {
                         const res = await axios.get(`${API}/settings/notifications`);
                         notifSettings.value = { ...notifSettings.value, ...res.data };
+                        // Carica anche l'orario del riepilogo giornaliero
+                        try {
+                            const hourRes = await axios.get(`${API}/settings/system/daily_summary_hour`);
+                            dailySummaryHour.value = parseInt(hourRes.data.value) || 8;
+                        } catch (e) { dailySummaryHour.value = 8; }
                     } catch (e) {
                         console.log('Notifiche non configurate');
                     }
@@ -2811,6 +2849,41 @@
                     loading.value = false;
                 };
                 
+                const sendDailySummary = async () => {
+                    loading.value = true;
+                    try {
+                        const res = await axios.post(`${API}/settings/notifications/send-daily-summary`);
+                        if (res.data.success) {
+                            showToast('Riepilogo giornaliero inviato!', 'success');
+                        } else {
+                            showToast(res.data.message || 'Riepilogo non inviato', 'warning');
+                        }
+                    } catch (e) {
+                        showToast(e.response?.data?.detail || 'Errore invio riepilogo', 'error');
+                    }
+                    loading.value = false;
+                };
+                
+                const saveDailySummaryHour = async () => {
+                    loading.value = true;
+                    try {
+                        await axios.put(`${API}/settings/system/daily_summary_hour`, { value: String(dailySummaryHour.value) });
+                        showToast('Orario riepilogo salvato', 'success');
+                    } catch (e) {
+                        showToast(e.response?.data?.detail || 'Errore', 'error');
+                    }
+                    loading.value = false;
+                };
+                
+                const loadDailySummaryHour = async () => {
+                    try {
+                        const res = await axios.get(`${API}/settings/system/daily_summary_hour`);
+                        dailySummaryHour.value = parseInt(res.data.value) || 8;
+                    } catch (e) {
+                        dailySummaryHour.value = 8;
+                    }
+                };
+                
                 // SSH Keys Management
                 const loadSSHKeyInfo = async () => {
                     try {
@@ -3091,6 +3164,7 @@
                     getVmDatasets,
                     editUser, saveUser, deleteUser,
                     saveSettings, saveAuthSettings, saveNotifSettings, testEmailNotification,
+                    sendDailySummary, saveDailySummaryHour, loadDailySummaryHour, dailySummaryHour,
                     // SSH Keys functions
                     loadSSHKeyInfo, generateSSHKey, regenerateSSHKey, copyPublicKey,
                     testAllSSHConnections, testSingleSSH, distributeSingleKey, distributeKeyToSelected,
